@@ -20,8 +20,8 @@ terraform {
     bucket         = "idk-tfstate-management-634222035434"
     key            = "global/scps/terraform.tfstate"
     region         = "ap-south-1"
-    dynamodb_table = "idk-terraform-lock"
-    encrypt        = true
+    use_lockfile = true
+    encrypt      = true
     profile        = "idk-management"
   }
 }

@@ -5,10 +5,14 @@
 #
 # PURPOSE
 # -------
-#   Creates three things that must exist BEFORE Terraform can run:
+#   Creates two things that must exist BEFORE Terraform can run:
 #     1. S3 bucket       — stores the Terraform remote state file
-#     2. DynamoDB table  — provides distributed locking for concurrent runs
-#     3. AWS Organization — enables the governance plane (SCPs, Tag Policies)
+#                          (also used for native S3 locking via use_lockfile = true)
+#     2. AWS Organization — enables the governance plane (SCPs, Tag Policies)
+#
+#   NOTE: DynamoDB locking is NOT used. Terraform >= 1.10 supports native
+#   S3 locking (use_lockfile = true), which writes a .tflock file to the
+#   state bucket — no separate DynamoDB table needed.
 #
 #   This is the "chicken-and-egg" bootstrap: Terraform needs remote state
 #   infrastructure to manage infrastructure, but that infrastructure must
@@ -105,11 +109,6 @@
 #     - Lifecycle policy         (auto-expire noncurrent versions after 90 days)
 #     - Enterprise tags          (all 12 mandatory tags applied)
 #
-#   DynamoDB Table:  <prefix>-terraform-lock
-#     - Partition key: LockID (String)
-#     - Billing: PAY_PER_REQUEST (no provisioned capacity cost)
-#     - Enterprise tags applied
-#
 #   AWS Organization:
 #     - Feature set: ALL (enables SCPs, Tag Policies, Backup Policies)
 #     - Policy types enabled: SERVICE_CONTROL_POLICY, TAG_POLICY, BACKUP_POLICY
@@ -181,7 +180,6 @@ if ! [[ "${ACCOUNT_ID}" =~ ^[0-9]{12}$ ]]; then
 fi
 
 STATE_BUCKET="${COMPANY_PREFIX}-tfstate-management-${ACCOUNT_ID}"
-LOCK_TABLE="${COMPANY_PREFIX}-terraform-lock"
 
 # ── Colors for output ─────────────────────────────────────────────────────────
 RED='\033[0;31m'
@@ -204,7 +202,6 @@ log_info "Account ID  : ${ACCOUNT_ID}"
 log_info "Profile     : ${AWS_PROFILE}"
 log_info "Region      : ${AWS_REGION}"
 log_info "State bucket: ${STATE_BUCKET}"
-log_info "Lock table  : ${LOCK_TABLE}"
 echo ""
 
 # ── Pre-flight checks ─────────────────────────────────────────────────────────
@@ -329,53 +326,6 @@ log_success "Bucket tagged with enterprise tags"
 
 echo ""
 
-# ── Create DynamoDB Lock Table ────────────────────────────────────────────────
-# WHY: Without this, two engineers running Terraform simultaneously would both
-#      read and write state, causing corruption. DynamoDB provides distributed
-#      locking — Terraform acquires a lock before writing, releases after.
-log_info "Creating DynamoDB lock table: ${LOCK_TABLE}"
-
-if aws dynamodb describe-table \
-     --table-name "${LOCK_TABLE}" \
-     --region "${AWS_REGION}" \
-     --profile "${AWS_PROFILE}" \
-     --output text > /dev/null 2>&1; then
-  log_warn "DynamoDB table ${LOCK_TABLE} already exists. Skipping creation."
-else
-  aws dynamodb create-table \
-    --table-name "${LOCK_TABLE}" \
-    --attribute-definitions AttributeName=LockID,AttributeType=S \
-    --key-schema AttributeName=LockID,KeyType=HASH \
-    --billing-mode PAY_PER_REQUEST \
-    --region "${AWS_REGION}" \
-    --profile "${AWS_PROFILE}" \
-    --tags \
-      Key=Department,Value="Platform Engineering" \
-      Key=CostCenter,Value=CC1001 \
-      Key=Project,Value=landing-zone \
-      Key=Application,Value=terraform-state \
-      Key=Environment,Value=management \
-      Key=Owner,Value=platform-team \
-      Key=BusinessUnit,Value=Technology \
-      Key=ManagedBy,Value=bootstrap-script \
-      Key=DataClassification,Value=internal \
-      Key=Compliance,Value=none \
-      Key=Backup,Value=not-required \
-      Key=Criticality,Value=high \
-    --output text > /dev/null
-
-  # Wait for table to be active before proceeding
-  log_info "Waiting for DynamoDB table to become active..."
-  aws dynamodb wait table-exists \
-    --table-name "${LOCK_TABLE}" \
-    --region "${AWS_REGION}" \
-    --profile "${AWS_PROFILE}"
-
-  log_success "DynamoDB lock table created: ${LOCK_TABLE}"
-fi
-
-echo ""
-
 # ── Enable AWS Organizations ──────────────────────────────────────────────────
 log_info "Checking AWS Organizations status..."
 
@@ -432,9 +382,9 @@ echo "============================================================"
 echo ""
 echo "Resources ready:"
 echo "  S3 State Bucket : s3://${STATE_BUCKET}"
-echo "  DynamoDB Table  : ${LOCK_TABLE}  (region: ${AWS_REGION})"
 echo "  AWS Organization: Enabled with ALL features"
 echo "  Policy Types    : SCP, Tag Policies, Backup Policies"
+echo "  State locking   : S3 native (use_lockfile = true) — no DynamoDB needed"
 echo ""
 echo "Next steps — run in this order:"
 echo ""

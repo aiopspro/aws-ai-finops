@@ -6,7 +6,9 @@
 
 ## What This Does
 
-Terraform stores its state in an S3 bucket and uses a DynamoDB table to prevent two people from running `terraform apply` at the same time. Those two resources must exist **before** Terraform can run — but Terraform can't create them, because it needs them to already exist. That's the chicken-and-egg problem this bootstrap solves.
+Terraform stores its state in an S3 bucket. That resource must exist **before** Terraform can run — but Terraform can't create it, because it needs it to already exist. That's the chicken-and-egg problem this bootstrap solves.
+
+> **No DynamoDB required.** Terraform >= 1.10 supports native S3 locking (`use_lockfile = true`), which writes a `.tflock` file directly to the state bucket. There is no separate DynamoDB table to provision or pay for.
 
 This folder contains two scripts that do the same thing — pick the one that matches your OS:
 
@@ -23,8 +25,7 @@ Both scripts are **idempotent** — safe to re-run. Resources that already exist
 
 | Resource | Name | Purpose |
 |---|---|---|
-| S3 Bucket | `<prefix>-tfstate-management-<account-id>` | Stores Terraform remote state files |
-| DynamoDB Table | `<prefix>-terraform-lock` | Distributed locking for concurrent Terraform runs |
+| S3 Bucket | `<prefix>-tfstate-management-<account-id>` | Stores Terraform remote state files + native S3 lock files |
 | AWS Organization | — | Governance plane — enables SCPs, Tag Policies, Backup Policies |
 
 The S3 bucket is hardened automatically:
@@ -169,7 +170,7 @@ bash scripts/bootstrap/bootstrap.sh --account-id 123456789012
 |---|---|---|---|
 | `--account-id` | **Yes** | — | Your 12-digit AWS management account ID |
 | `--profile` | No | `$AWS_PROFILE` or `idk-management` | AWS credentials profile to use |
-| `--region` | No | `ap-south-1` | AWS region for S3 bucket and DynamoDB table |
+| `--region` | No | `ap-south-1` | AWS region for the S3 state bucket |
 | `--prefix` | No | `idk` | Company prefix used in resource names |
 
 **Examples:**
@@ -200,7 +201,6 @@ python bootstrap.py --help
 [INFO]  Profile     : idk-management
 [INFO]  Region      : ap-south-1
 [INFO]  State bucket: idk-tfstate-management-123456789012
-[INFO]  Lock table  : idk-terraform-lock
 
 [INFO]  Running pre-flight checks...
 [OK]    Authenticated as: arn:aws:iam::123456789012:user/terraform-bootstrap
@@ -215,10 +215,6 @@ python bootstrap.py --help
 [OK]    Public access blocked
 [OK]    Lifecycle policy applied (90-day noncurrent version expiry)
 [OK]    Bucket tagged with enterprise tags
-
-[INFO]  Creating DynamoDB lock table: idk-terraform-lock
-[INFO]  Waiting for DynamoDB table to become active...
-[OK]    DynamoDB lock table created: idk-terraform-lock
 
 [INFO]  Checking AWS Organizations status...
 [OK]    AWS Organization created with ALL features

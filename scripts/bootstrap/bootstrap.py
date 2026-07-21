@@ -5,10 +5,14 @@ IDK Digital Solutions — Terraform Bootstrap Script (Python)
 
 PURPOSE
 -------
-  Creates three things that must exist BEFORE Terraform can run:
+  Creates two things that must exist BEFORE Terraform can run:
     1. S3 bucket       — stores the Terraform remote state file
-    2. DynamoDB table  — provides distributed locking for concurrent Terraform runs
-    3. AWS Organization — enables the governance plane (SCPs, Tag Policies, etc.)
+                         (also used for native S3 locking via use_lockfile = true)
+    2. AWS Organization — enables the governance plane (SCPs, Tag Policies, etc.)
+
+  NOTE: DynamoDB locking is NOT used. Terraform >= 1.10 supports native
+  S3 locking (use_lockfile = true), which writes a .tflock file to the
+  state bucket — no separate DynamoDB table needed.
 
   This is the classic "chicken-and-egg" problem: Terraform needs remote state
   infrastructure to manage infrastructure, but that infrastructure must exist
@@ -130,7 +134,7 @@ HOW TO RUN
                     Default: value of AWS_PROFILE env var, or "idk-management".
                     Example: --profile my-profile
 
-    --region        AWS region for the S3 bucket and DynamoDB table.
+    --region        AWS region for the S3 state bucket.
                     Default: ap-south-1 (Mumbai)
                     Example: --region us-east-1
 
@@ -150,11 +154,6 @@ WHAT THE SCRIPT CREATES
     - Public access blocked    (state must never be publicly accessible)
     - Lifecycle policy         (auto-expire old versions after 90 days)
     - Enterprise tags          (all 12 mandatory tags applied)
-
-  DynamoDB Table:  <prefix>-terraform-lock
-    - Partition key: LockID (String)
-    - Billing: PAY_PER_REQUEST (no provisioned capacity cost)
-    - Enterprise tags applied
 
   AWS Organization:
     - Feature set: ALL (enables SCPs, Tag Policies, Backup Policies)
@@ -267,7 +266,7 @@ def parse_args() -> argparse.Namespace:
         default="ap-south-1",
         metavar="REGION",
         help=(
-            "AWS region for the S3 bucket and DynamoDB table. "
+            "AWS region for the S3 state bucket. "
             "Default: ap-south-1 (Mumbai). "
             "Note: us-east-1 does NOT require LocationConstraint — all other regions do."
         ),
@@ -279,7 +278,7 @@ def parse_args() -> argparse.Namespace:
         help=(
             "Company prefix used in resource names. "
             "Default: idk. "
-            "Produces: <prefix>-tfstate-management-<account-id> and <prefix>-terraform-lock"
+            "Produces: <prefix>-tfstate-management-<account-id>"
         ),
     )
 
@@ -460,61 +459,6 @@ def create_state_bucket(session: boto3.Session, bucket_name: str, region: str) -
     print()
 
 
-# ── DynamoDB Lock Table ────────────────────────────────────────────────────────
-def create_lock_table(session: boto3.Session, table_name: str, region: str) -> None:
-    # WHY A LOCK TABLE:
-    # If two engineers run "terraform apply" at the same time against the same
-    # state file, both will read the current state, make changes, and write back —
-    # creating a race condition that corrupts the state. DynamoDB provides a
-    # distributed lock: Terraform writes a record before modifying state and
-    # deletes it after. The second engineer's run waits until the lock is released.
-    dynamodb = session.client("dynamodb", region_name=region)
-
-    log_info(f"Creating DynamoDB lock table: {table_name}")
-
-    table_exists = False
-    try:
-        dynamodb.describe_table(TableName=table_name)
-        table_exists = True
-    except ClientError as e:
-        if e.response["Error"]["Code"] != "ResourceNotFoundException":
-            log_error(f"Unexpected error checking DynamoDB table: {e}")
-
-    if table_exists:
-        log_warn(f"DynamoDB table {table_name} already exists. Skipping creation.")
-    else:
-        dynamodb.create_table(
-            TableName=table_name,
-            AttributeDefinitions=[{"AttributeName": "LockID", "AttributeType": "S"}],
-            KeySchema=[{"AttributeName": "LockID", "KeyType": "HASH"}],
-            # PAY_PER_REQUEST: no provisioned capacity to configure or pay for at rest.
-            # The lock table has near-zero read/write traffic — only active during
-            # terraform apply — so on-demand billing is the most cost-efficient option.
-            BillingMode="PAY_PER_REQUEST",
-            Tags=[
-                {"Key": "Department",         "Value": "Platform Engineering"},
-                {"Key": "CostCenter",         "Value": "CC1001"},
-                {"Key": "Project",            "Value": "landing-zone"},
-                {"Key": "Application",        "Value": "terraform-state"},
-                {"Key": "Environment",        "Value": "management"},
-                {"Key": "Owner",              "Value": "platform-team"},
-                {"Key": "BusinessUnit",       "Value": "Technology"},
-                {"Key": "ManagedBy",          "Value": "bootstrap-script"},
-                {"Key": "DataClassification", "Value": "internal"},
-                {"Key": "Compliance",         "Value": "none"},
-                {"Key": "Backup",             "Value": "not-required"},
-                {"Key": "Criticality",        "Value": "high"},
-            ],
-        )
-
-        log_info("Waiting for DynamoDB table to become active...")
-        waiter = dynamodb.get_waiter("table_exists")
-        waiter.wait(TableName=table_name)
-        log_ok(f"DynamoDB lock table created: {table_name}")
-
-    print()
-
-
 # ── AWS Organizations ──────────────────────────────────────────────────────────
 def setup_organizations(session: boto3.Session) -> None:
     # The AWS Organizations API endpoint is a global service — its SDK endpoint
@@ -576,7 +520,7 @@ def setup_organizations(session: boto3.Session) -> None:
 
 
 # ── Summary ────────────────────────────────────────────────────────────────────
-def print_summary(bucket_name: str, table_name: str, region: str) -> None:
+def print_summary(bucket_name: str, region: str) -> None:
     sep = "=" * 60
     print(sep)
     log_ok("Bootstrap complete!")
@@ -584,9 +528,9 @@ def print_summary(bucket_name: str, table_name: str, region: str) -> None:
     print()
     print("Resources ready:")
     print(f"  S3 State Bucket : s3://{bucket_name}")
-    print(f"  DynamoDB Table  : {table_name}  (region: {region})")
     print( "  AWS Organization: Enabled with ALL features")
     print( "  Policy Types    : SCP, Tag Policies, Backup Policies")
+    print( "  State locking   : S3 native (use_lockfile = true) — no DynamoDB needed")
     print()
     print("Next steps — run in this order:")
     print()
@@ -615,7 +559,6 @@ def main() -> None:
     region       = args.region
     prefix       = args.prefix
     bucket_name  = f"{prefix}-tfstate-management-{account_id}"
-    table_name   = f"{prefix}-terraform-lock"
 
     print()
     print("=" * 60)
@@ -625,15 +568,13 @@ def main() -> None:
     log_info(f"Profile     : {profile}")
     log_info(f"Region      : {region}")
     log_info(f"State bucket: {bucket_name}")
-    log_info(f"Lock table  : {table_name}")
     print()
 
     session = get_session(profile, region)
     preflight(session, account_id, profile, region)
     create_state_bucket(session, bucket_name, region)
-    create_lock_table(session, table_name, region)
     setup_organizations(session)
-    print_summary(bucket_name, table_name, region)
+    print_summary(bucket_name, region)
 
 
 if __name__ == "__main__":

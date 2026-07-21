@@ -172,7 +172,7 @@ resource "aws_organizations_organizational_unit" "suspended" {
 # ── Log Archive Account ───────────────────────────────────────────────────────
 resource "aws_organizations_account" "log_archive" {
   name                       = "idk-log-archive"
-  email                      = "aws+idk-log-archive@gmail.com" # CHANGE THIS
+  email                      = "idkwealthclub+idk-log-archive@gmail.com" # CHANGE THIS
   iam_user_access_to_billing = "ALLOW"
   parent_id                  = aws_organizations_organizational_unit.security.id
 
@@ -196,7 +196,7 @@ resource "aws_organizations_account" "log_archive" {
 # ── Security Account ─────────────────────────────────────────────────────────
 resource "aws_organizations_account" "security" {
   name                       = "idk-security"
-  email                      = "aws+idk-security@gmail.com" # CHANGE THIS
+  email                      = "idkwealthclub+idk-security@gmail.com" # CHANGE THIS
   iam_user_access_to_billing = "ALLOW"
   parent_id                  = aws_organizations_organizational_unit.security.id
 
@@ -216,7 +216,7 @@ resource "aws_organizations_account" "security" {
 # ── Network Account ───────────────────────────────────────────────────────────
 resource "aws_organizations_account" "network" {
   name                       = "idk-network"
-  email                      = "aws+idk-network@gmail.com" # CHANGE THIS
+  email                      = "idkwealthclub+idk-network@gmail.com" # CHANGE THIS
   iam_user_access_to_billing = "ALLOW"
   parent_id                  = aws_organizations_organizational_unit.infrastructure.id
 
@@ -236,7 +236,7 @@ resource "aws_organizations_account" "network" {
 # ── Shared Services Account ───────────────────────────────────────────────────
 resource "aws_organizations_account" "shared_services" {
   name                       = "idk-shared-services"
-  email                      = "aws+idk-shared-services@gmail.com" # CHANGE THIS
+  email                      = "idkwealthclub+idk-shared-services@gmail.com" # CHANGE THIS
   iam_user_access_to_billing = "ALLOW"
   parent_id                  = aws_organizations_organizational_unit.shared_services.id
 
@@ -256,7 +256,7 @@ resource "aws_organizations_account" "shared_services" {
 # ── Production Account ────────────────────────────────────────────────────────
 resource "aws_organizations_account" "production" {
   name                       = "idk-production"
-  email                      = "aws+idk-production@gmail.com" # CHANGE THIS
+  email                      = "idkwealthclub+idk-production@gmail.com" # CHANGE THIS
   iam_user_access_to_billing = "ALLOW"
   parent_id                  = aws_organizations_organizational_unit.production.id
 
@@ -276,7 +276,7 @@ resource "aws_organizations_account" "production" {
 # ── Development Account ───────────────────────────────────────────────────────
 resource "aws_organizations_account" "development" {
   name                       = "idk-development"
-  email                      = "aws+idk-development@gmail.com" # CHANGE THIS
+  email                      = "idkwealthclub+idk-development@gmail.com" # CHANGE THIS
   iam_user_access_to_billing = "ALLOW"
   parent_id                  = aws_organizations_organizational_unit.non_production.id
 
@@ -296,7 +296,7 @@ resource "aws_organizations_account" "development" {
 # ── UAT Account ───────────────────────────────────────────────────────────────
 resource "aws_organizations_account" "uat" {
   name                       = "idk-uat"
-  email                      = "aws+idk-uat@gmail.com" # CHANGE THIS
+  email                      = "idkwealthclub+idk-uat@gmail.com" # CHANGE THIS
   iam_user_access_to_billing = "ALLOW"
   parent_id                  = aws_organizations_organizational_unit.non_production.id
 
@@ -317,7 +317,7 @@ resource "aws_organizations_account" "uat" {
 # NOTE: This is the ONLY account running compute in Phase 1
 resource "aws_organizations_account" "ai_lab" {
   name                       = "idk-ai-lab"
-  email                      = "aws+idk-ai-lab@gmail.com" # CHANGE THIS
+  email                      = "idkwealthclub+idk-ai-lab@gmail.com" # CHANGE THIS
   iam_user_access_to_billing = "ALLOW"
   parent_id                  = aws_organizations_organizational_unit.sandbox.id
 
@@ -337,7 +337,7 @@ resource "aws_organizations_account" "ai_lab" {
 # ── FinOps Lab Account ────────────────────────────────────────────────────────
 resource "aws_organizations_account" "finops_lab" {
   name                       = "idk-finops-lab"
-  email                      = "aws+idk-finops-lab@gmail.com" # CHANGE THIS
+  email                      = "idkwealthclub+idk-finops-lab@gmail.com" # CHANGE THIS
   iam_user_access_to_billing = "ALLOW"
   parent_id                  = aws_organizations_organizational_unit.sandbox.id
 

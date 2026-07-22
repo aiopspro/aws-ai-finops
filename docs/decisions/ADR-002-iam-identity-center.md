@@ -1,25 +1,28 @@
 ---
-# ADR-002: IAM Identity Center over IAM Users
-**Date**: 2026-07-10
-**Status**: Accepted
+# ADR-002: IAM Users over IAM Identity Center (Revised)
+**Date**: 2026-07-22
+**Status**: Revised — IAM Identity Center deferred
+**Original Date**: 2026-07-10
 
 ## Decision
-All human access to AWS accounts is via IAM Identity Center (SSO). No long-lived IAM users except the temporary `terraform-bootstrap` user (deleted after Phase 3).
+Use per-account IAM users for lab access. IAM Identity Center (SSO) is deferred — it will not be implemented in this lab.
 
 ## Rationale
-- **No long-lived credentials**: IAM Identity Center issues short-lived session tokens (1–12 hours). A leaked token expires. A leaked IAM access key is valid until manually rotated.
-- **Centralized control**: Disable one Identity Center user to revoke access across all 10 accounts simultaneously. With IAM users, you'd need to disable users in each account individually.
-- **MFA enforcement**: Identity Center can require MFA at the SSO level — applies universally. With IAM users, MFA is per-user per-account policy.
-- **Full audit trail**: All console and CLI actions via Identity Center are logged with the SSO user's identity in CloudTrail. IAM user trails can be harder to correlate across accounts.
-- **CIS Benchmark 1.x compliance**: Multiple CIS controls require avoiding long-lived credentials.
+- **Simplicity**: IAM Identity Center requires a SharedServices account with Identity Center enabled, permission sets, assignments, and browser-based `aws sso login` flow. For a personal lab, this is unnecessary overhead.
+- **Direct access**: IAM users with access keys allow direct `aws configure --profile` setup — faster to get working, no SSO portal required.
+- **Lab scope**: The primary goal is practicing AI platform engineering and FinOps, not identity federation. IAM users are sufficient for cross-account work in a 4-account lab.
 
-## Consequences
-- **Positive**: Dramatically reduced credential risk. Single identity plane. Easier access reviews.
-- **Negative**: Requires browser-based login for CLI (aws sso login). Slightly more setup complexity upfront.
+## Constraints Accepted
+- Access keys are long-lived — rotate them regularly and never commit them to source control.
+- No central revocation — if a key is compromised, it must be deleted per-account manually.
+- This is acceptable for a personal lab. A production enterprise environment would require Identity Center.
 
-## Alternatives Considered
-| Option | Pros | Cons |
-|--------|------|------|
-| IAM Users per account | Simple, no SSO setup | Long-lived keys, no central control, CIS violations |
-| External IdP (Okta/Azure AD) | Enterprise SSO, existing identity | Complex setup, licensing cost |
-| **IAM Identity Center** (chosen) | AWS-native, free, short-lived creds, central control | Browser login flow for CLI |
+## SCP Impact
+The `sso:*`, `sso-directory:*`, and `identitystore:*` action namespaces have been removed from the region restriction SCP's `NotAction` list, as they are no longer needed and `sso-directory` is not a valid SCP action namespace.
+
+## When to Revisit
+If this lab is extended to simulate enterprise access patterns or multi-team access, implement IAM Identity Center at that point. The SharedServices OU is already in place to host it.
+
+## Original Rationale (for reference)
+The original design favoured Identity Center for short-lived credentials, central revocation, MFA enforcement, and CIS Benchmark compliance. These remain valid enterprise reasons — they are simply deferred for this lab.
+

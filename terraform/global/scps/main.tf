@@ -73,7 +73,6 @@ resource "aws_organizations_policy" "deny_non_mumbai_regions" {
           # Route 53 — global DNS
           "route53:*",
           "route53domains:*",
-          "route53resolver:*",
 
           # CloudFront — global CDN
           "cloudfront:*",
@@ -92,11 +91,6 @@ resource "aws_organizations_policy" "deny_non_mumbai_regions" {
 
           # Account management
           "account:*",
-
-          # SSO / Identity Center — global
-          "sso:*",
-          "sso-directory:*",
-          "identitystore:*",
 
           # Security Hub, GuardDuty — management APIs
           "securityhub:*",

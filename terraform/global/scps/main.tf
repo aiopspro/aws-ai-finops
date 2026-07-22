@@ -57,18 +57,14 @@ resource "aws_organizations_policy" "deny_non_mumbai_regions" {
           "organizations:*",
 
           # Billing & Cost Management — global
-          "billing:*",
+          # NOTE: "billing:*", "tax:*", "cur:*", "pricing:*" are NOT valid SCP namespaces
+          "aws-portal:*",
           "budgets:*",
           "ce:*",
-          "cur:*",
-          "pricing:*",
           "savingsplans:*",
-          "tax:*",
 
-          # Support & Trusted Advisor — global
+          # Support — global (trustedadvisor:* and health:* are NOT valid SCP namespaces)
           "support:*",
-          "trustedadvisor:*",
-          "health:*",
 
           # Route 53 — global DNS
           "route53:*",

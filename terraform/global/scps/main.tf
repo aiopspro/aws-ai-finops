@@ -57,12 +57,13 @@ resource "aws_organizations_policy" "deny_non_mumbai_regions" {
           "organizations:*",
 
           # Billing & Cost Management — global
-          "aws-portal:*",
+          "billing:*",
           "budgets:*",
           "ce:*",
           "cur:*",
           "pricing:*",
           "savingsplans:*",
+          "tax:*",
 
           # Support & Trusted Advisor — global
           "support:*",

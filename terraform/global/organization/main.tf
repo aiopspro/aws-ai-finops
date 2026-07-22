@@ -4,8 +4,8 @@
 # =============================================================================
 # WHAT THIS FILE DOES:
 #   1. Reads the existing AWS Organization (created by bootstrap)
-#   2. Manages 4 Organizational Units aligned to lab goals
-#   3. Manages 4 member accounts
+#   2. Manages 3 Organizational Units aligned to lab goals
+#   3. Manages 3 member accounts
 #
 # LAB GOAL ALIGNMENT:
 #   This is a hands-on enterprise architecture lab focused on:
@@ -18,10 +18,9 @@
 #
 # OU STRUCTURE:
 #   Root
-#   ├── Security          → Log Archive (immutable logs, GuardDuty, SecurityHub)
-#   ├── Infrastructure    → Reserved for networking practice (empty for now)
-#   ├── SharedServices    → IAM Identity Center, shared tooling
-#   └── NonProduction     → Development (primary AI/FinOps lab) + UAT
+#   ├── Security        → Log Archive (immutable logs, GuardDuty, SecurityHub)
+#   ├── SharedServices  → IAM Identity Center, shared tooling (account added later)
+#   └── NonProduction   → Development (primary AI/FinOps lab) + UAT
 #
 # WHY IMPORT INSTEAD OF CREATE:
 #   Bootstrap already created the Organization. OUs and accounts were created
@@ -95,7 +94,7 @@ resource "aws_organizations_organizational_unit" "non_production" {
   parent_id = local.root_id
 
   tags = {
-    Description = "Primary lab accounts for AI and FinOps practice"
+    Description = "Development and UAT accounts"
     Criticality = "medium"
   }
 }
@@ -123,7 +122,7 @@ resource "aws_organizations_account" "log_archive" {
   parent_id                  = aws_organizations_organizational_unit.security.id
 
   tags = {
-    AccountPurpose     = "Immutable centralised log storage and security tooling"
+    AccountPurpose     = "Immutable centralized log storage"
     DataClassification = "confidential"
     Compliance         = "none"
     Backup             = "required"
@@ -131,7 +130,7 @@ resource "aws_organizations_account" "log_archive" {
   }
 
   lifecycle {
-    ignore_changes = [email]
+    ignore_changes = [email, iam_user_access_to_billing]
   }
 }
 
@@ -151,7 +150,7 @@ resource "aws_organizations_account" "development" {
   parent_id                  = aws_organizations_organizational_unit.non_production.id
 
   tags = {
-    AccountPurpose     = "Primary AI platform and FinOps lab experimentation"
+    AccountPurpose     = "Developer workloads and feature development"
     DataClassification = "internal"
     Compliance         = "none"
     Backup             = "not-required"
@@ -159,7 +158,7 @@ resource "aws_organizations_account" "development" {
   }
 
   lifecycle {
-    ignore_changes = [email]
+    ignore_changes = [email, iam_user_access_to_billing]
   }
 }
 
@@ -176,7 +175,7 @@ resource "aws_organizations_account" "uat" {
   parent_id                  = aws_organizations_organizational_unit.non_production.id
 
   tags = {
-    AccountPurpose     = "Pre-production validation and promotion pipeline practice"
+    AccountPurpose     = "User acceptance testing and pre-production validation"
     DataClassification = "internal"
     Compliance         = "none"
     Backup             = "not-required"
@@ -184,6 +183,6 @@ resource "aws_organizations_account" "uat" {
   }
 
   lifecycle {
-    ignore_changes = [email]
+    ignore_changes = [email, iam_user_access_to_billing]
   }
 }

@@ -2,133 +2,140 @@
 
 > **Run second** — after the bootstrap script, before SCPs and Tag Policies.
 
-This Terraform configuration creates the AWS Organization structure: all Organizational Units (OUs), all 9 member accounts, and their OU assignments.
+This Terraform configuration manages the AWS Organization structure: Organizational Units (OUs), member accounts, and their OU assignments.
+
+---
+
+## Current Structure
+
+```
+Root
+├── Security        → idk-log-archive
+├── SharedServices  → (empty — account added via Terraform in a future phase)
+└── NonProduction   → idk-development, idk-uat
+```
+
+### Organizational Units (3 OUs)
+
+| OU | Purpose | SCP Intent |
+|---|---|---|
+| `Security` | Immutable log archive, future GuardDuty/SecurityHub | Highly restricted — nobody modifies logs or security config |
+| `SharedServices` | IAM Identity Center, shared tooling (account added later) | Moderate — services consumed by all other accounts |
+| `NonProduction` | Primary AI/FinOps lab + UAT validation | Moderate — region restriction, cost guardrails |
+
+### Member Accounts (3 accounts)
+
+| Account | OU | Lab Purpose |
+|---|---|---|
+| `idk-log-archive` | Security | Immutable centralised log storage, CloudTrail org trail |
+| `idk-development` | NonProduction | **Primary lab account** — AI (Bedrock, SageMaker), FinOps practice |
+| `idk-uat` | NonProduction | Pre-production validation, cross-account deployment practice |
+
+> The 4th account — `idk-management` — is your existing management account created during bootstrap. It is not managed here.
+
+---
+
+## Setup — Fill In Your Values
+
+Before running Terraform, fill in two files:
+
+**`terraform.tfvars`** — your AWS account details:
+```hcl
+management_account_id = "<your-12-digit-account-id>"
+aws_region            = "ap-south-1"
+aws_profile           = "idk-management"
+```
+
+**`backend.hcl`** — your S3 state bucket:
+```hcl
+bucket  = "idk-tfstate-management-<your-account-id>"
+region  = "ap-south-1"
+profile = "idk-management"
+```
+
+Both files are gitignored — your account ID never touches source control.
 
 ---
 
 ## Before You Run — Fill In Your Email Addresses
 
-**This is the only manual step required before `terraform apply`.**
+Each AWS account requires a globally unique email. Open `main.tf` and confirm the email on each `aws_organizations_account` resource matches what you used.
 
-Each AWS account requires a unique email address. Open `main.tf` and replace the placeholder email on every `aws_organizations_account` resource.
-
-**File:** `terraform/global/organization/main.tf`
-
-| Account | OU | Line | Replace this placeholder |
-|---|---|---|---|
-| `idk-log-archive` | Security | 175 | `aws+idk-log-archive@gmail.com` |
-| `idk-security` | Security | 199 | `aws+idk-security@gmail.com` |
-| `idk-network` | Infrastructure | 220 | `aws+idk-network@gmail.com` |
-| `idk-shared-services` | Shared Services | 239 | `aws+idk-shared-services@gmail.com` |
-| `idk-production` | Production | 258 | `aws+idk-production@gmail.com` |
-| `idk-development` | Non-Production | 279 | `aws+idk-development@gmail.com` |
-| `idk-uat` | Non-Production | 299 | `aws+idk-uat@gmail.com` |
-| `idk-ai-lab` | Sandbox | 319 | `aws+idk-ai-lab@gmail.com` |
-| `idk-finops-lab` | Sandbox | 339 | `aws+idk-finops-lab@gmail.com` |
-
-The 10th account — `idk-management` — is your existing account (the one you ran the bootstrap script against). It already exists and is not created here.
-
----
-
-## Choosing Your Email Addresses
-
-Each email must be **globally unique across all of AWS**. No two AWS accounts anywhere in the world can share the same email address.
-
-### Option A — Gmail plus-addressing (recommended for a personal lab)
-
-If your Gmail is `yourname@gmail.com`, AWS treats `yourname+anything@gmail.com` as a unique address — but all emails still arrive in your single inbox. No extra accounts needed.
+**Gmail plus-addressing** is the easiest approach for a personal lab — all emails arrive in one inbox:
 
 ```
 yourname+idk-log-archive@gmail.com
-yourname+idk-security@gmail.com
-yourname+idk-network@gmail.com
-yourname+idk-shared-services@gmail.com
-yourname+idk-production@gmail.com
 yourname+idk-development@gmail.com
 yourname+idk-uat@gmail.com
-yourname+idk-ai-lab@gmail.com
-yourname+idk-finops-lab@gmail.com
 ```
 
-### Option B — Your own domain
+### Why emails cannot be changed after account creation
 
-```
-aws+idk-log-archive@idkdigitalsolutions.com
-aws+idk-security@idkdigitalsolutions.com
-aws+idk-network@idkdigitalsolutions.com
-... and so on
-```
-
----
-
-## Critical: Emails Cannot Be Changed After Account Creation
-
-AWS does not allow email changes via API once an account is created. Every `aws_organizations_account` resource has this block for exactly this reason:
+AWS does not allow email updates via API once an account exists. Every account resource has:
 
 ```hcl
 lifecycle {
-  ignore_changes = [email]
+  ignore_changes = [email, iam_user_access_to_billing]
 }
 ```
 
-Without it, Terraform would show a diff on every plan and attempt to update the email — which would always fail. With it, Terraform ignores the email field after the initial creation.
+`iam_user_access_to_billing` is also ignored because AWS does not allow changing this via API after account creation — attempting to change it forces a destroy/recreate which will fail (accounts cannot be deleted for 90 days).
 
-**Fill in the correct emails before running `terraform apply` for the first time. You cannot fix this later without deleting the account, which requires a 90-day wait.**
+---
+
+## Brownfield Import — Accounts Already Exist
+
+If you are setting up this repo against an organization that already has these accounts and OUs (e.g. after a fresh `git clone`), import them into state before running `terraform apply`:
+
+```bash
+# Import OUs
+terraform import aws_organizations_organizational_unit.security      <ou-id>
+terraform import aws_organizations_organizational_unit.shared_services <ou-id>
+terraform import aws_organizations_organizational_unit.non_production  <ou-id>
+
+# Import accounts
+terraform import aws_organizations_account.log_archive  <account-id>
+terraform import aws_organizations_account.development  <account-id>
+terraform import aws_organizations_account.uat          <account-id>
+```
+
+Get the IDs from the AWS console or:
+
+```bash
+# List OUs
+aws organizations list-organizational-units-for-parent \
+  --parent-id <root-id> \
+  --profile idk-management \
+  --query 'OrganizationalUnits[].{Name:Name,Id:Id}'
+
+# List accounts
+aws organizations list-accounts \
+  --profile idk-management \
+  --query 'Accounts[].{Name:Name,Id:Id}'
+```
 
 ---
 
 ## Running Terraform
 
-Ensure the bootstrap script has already completed successfully before proceeding.
-
 ```bash
-# 1. Initialise — downloads the AWS provider and connects to the S3 backend
-terraform init
+# 1. Initialise — pass backend config so Terraform knows which S3 bucket to use
+terraform init -backend-config=backend.hcl
 
-# 2. Plan — shows exactly what will be created, review carefully
+# 2. Plan — review carefully before applying
 terraform plan
 
-# 3. Apply — creates the OUs and member accounts
+# 3. Apply
 terraform apply
 ```
 
-> Account creation is eventually consistent. AWS may take 2–5 minutes to fully provision each new member account after `terraform apply` completes.
-
----
-
-## What Gets Created
-
-### Organizational Units (7 OUs)
-
-| OU | Purpose | SCP intent |
-|---|---|---|
-| `Security` | Log Archive and Security Tooling accounts | Highly restricted — nobody modifies logs or security config |
-| `Infrastructure` | Network account (Transit Gateway, DNS) | Networking changes require elevated approval |
-| `SharedServices` | IAM Identity Center, shared tooling | Moderate — services consumed by all other accounts |
-| `Production` | Production workloads | Strict — no unapproved services, no untagged resources |
-| `NonProduction` | Development and UAT | Moderate — region restriction still applies |
-| `Sandbox` | AI Lab, FinOps Lab | Permissive within cost guardrails |
-| `Suspended` | Quarantined accounts pending closure | Deny all except billing reads |
-
-### Member Accounts (9 accounts)
-
-| Account | OU | Purpose |
-|---|---|---|
-| `idk-log-archive` | Security | Immutable centralised log storage |
-| `idk-security` | Security | GuardDuty admin, SecurityHub aggregator |
-| `idk-network` | Infrastructure | Transit Gateway, Route 53, shared VPCs |
-| `idk-shared-services` | SharedServices | IAM Identity Center, CodeArtifact |
-| `idk-production` | Production | Production workloads |
-| `idk-development` | NonProduction | Developer workloads and feature development |
-| `idk-uat` | NonProduction | User acceptance testing |
-| `idk-ai-lab` | Sandbox | Agentic AI platform — **only account running compute in Phase 1** |
-| `idk-finops-lab` | Sandbox | FinOps tooling experimentation |
+> Account creation is eventually consistent. AWS may take 2–5 minutes per account after apply completes.
 
 ---
 
 ## Outputs
 
-After `terraform apply`, these values are written to remote state and consumed by the SCPs and Tag Policies layers:
+These values are written to remote state and consumed by the SCPs and Tag Policies layers:
 
 | Output | Description |
 |---|---|
@@ -136,39 +143,31 @@ After `terraform apply`, these values are written to remote state and consumed b
 | `organization_root_id` | Root ID — parent of all top-level OUs |
 | `master_account_id` | Management account ID |
 | `ou_security_id` | Security OU ID |
-| `ou_infrastructure_id` | Infrastructure OU ID |
 | `ou_shared_services_id` | Shared Services OU ID |
-| `ou_production_id` | Production OU ID |
 | `ou_non_production_id` | Non-Production OU ID |
-| `ou_sandbox_id` | Sandbox OU ID |
-| `ou_suspended_id` | Suspended OU ID |
-| `account_ids` | Map of all 9 member account IDs |
-| `ai_lab_account_id` | AI Lab account ID (used frequently in Phase 1) |
+| `account_ids` | Map of all 3 member account IDs |
+| `development_account_id` | Development account ID (primary lab account) |
 
 ---
 
 ## Remote State
 
-This layer's state is stored at:
-
 ```
 s3://idk-tfstate-management-<account-id>/global/organization/terraform.tfstate
 ```
 
-The SCPs and Tag Policies layers read OU IDs from this state via `terraform_remote_state` data sources. Run this layer first before those two.
+State locking uses S3 native locking (`use_lockfile = true`) — no DynamoDB table required.
 
 ---
 
 ## After This — What to Run Next
 
 ```bash
-# Apply Service Control Policies
 cd ../scps
-terraform init && terraform plan && terraform apply
+terraform init -backend-config=backend.hcl && terraform plan && terraform apply
 
-# Apply Tag Policies
 cd ../tag-policies
-terraform init && terraform plan && terraform apply
+terraform init -backend-config=backend.hcl && terraform plan && terraform apply
 ```
 
 ---
@@ -177,9 +176,12 @@ terraform init && terraform plan && terraform apply
 
 ```
 terraform/global/organization/
-├── main.tf        # OUs and member accounts — edit email addresses here
+├── main.tf        # OUs and member accounts
+├── variables.tf   # management_account_id, aws_region, aws_profile
 ├── provider.tf    # AWS provider config and default tags
 ├── versions.tf    # Terraform and provider version pins, S3 backend config
 ├── outputs.tf     # OU IDs and account IDs exported for downstream layers
+├── terraform.tfvars  # Your values — gitignored, never committed
+├── backend.hcl       # S3 backend config — gitignored, never committed
 └── README.md      # This file
 ```

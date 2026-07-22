@@ -117,7 +117,7 @@ resource "aws_organizations_organizational_unit" "non_production" {
 #   compromised workload accounts cannot tamper with audit trails.
 resource "aws_organizations_account" "log_archive" {
   name                       = "idk-log-archive"
-  email                      = "idkwealthclub+idk-log-archive@gmail.com"
+  email                      = "yourname+idk-log-archive@gmail.com"
   iam_user_access_to_billing = "ALLOW"
   parent_id                  = aws_organizations_organizational_unit.security.id
 
@@ -145,7 +145,7 @@ resource "aws_organizations_account" "log_archive" {
 #   — same governance patterns, consolidated for cost efficiency.
 resource "aws_organizations_account" "development" {
   name                       = "idk-development"
-  email                      = "idkwealthclub+idk-development@gmail.com"
+  email                      = "yourname+idk-development@gmail.com"
   iam_user_access_to_billing = "ALLOW"
   parent_id                  = aws_organizations_organizational_unit.non_production.id
 
@@ -170,7 +170,7 @@ resource "aws_organizations_account" "development" {
 #   of treating environments as cattle — identical config, different data.
 resource "aws_organizations_account" "uat" {
   name                       = "idk-uat"
-  email                      = "idkwealthclub+idk-uat@gmail.com"
+  email                      = "yourname+idk-uat@gmail.com"
   iam_user_access_to_billing = "ALLOW"
   parent_id                  = aws_organizations_organizational_unit.non_production.id
 

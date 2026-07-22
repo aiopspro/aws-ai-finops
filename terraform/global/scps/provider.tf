@@ -4,8 +4,8 @@
 # =============================================================================
 
 provider "aws" {
-  region  = "ap-south-1"
-  profile = "idk-management"
+  region  = var.aws_region
+  profile = var.aws_profile
 
   default_tags {
     tags = {
@@ -30,21 +30,17 @@ provider "aws" {
 data "terraform_remote_state" "organization" {
   backend = "s3"
   config = {
-    bucket  = "idk-tfstate-management-634222035434"
+    bucket  = "idk-tfstate-management-${var.management_account_id}"
     key     = "global/organization/terraform.tfstate"
-    region  = "ap-south-1"
-    profile = "idk-management"
+    region  = var.aws_region
+    profile = var.aws_profile
   }
 }
 
 # ── Local aliases for cleaner references ──────────────────────────────────────
 locals {
   ou_security_id    = data.terraform_remote_state.organization.outputs.ou_security_id
-  ou_infra_id       = data.terraform_remote_state.organization.outputs.ou_infrastructure_id
   ou_shared_id      = data.terraform_remote_state.organization.outputs.ou_shared_services_id
-  ou_production_id  = data.terraform_remote_state.organization.outputs.ou_production_id
   ou_nonprod_id     = data.terraform_remote_state.organization.outputs.ou_non_production_id
-  ou_sandbox_id     = data.terraform_remote_state.organization.outputs.ou_sandbox_id
-  ou_suspended_id   = data.terraform_remote_state.organization.outputs.ou_suspended_id
   master_account_id = data.terraform_remote_state.organization.outputs.master_account_id
 }

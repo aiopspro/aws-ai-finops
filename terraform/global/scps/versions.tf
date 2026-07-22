@@ -13,15 +13,11 @@ terraform {
     }
   }
 
-  # Reads OU IDs from the organization layer's remote state
-  # WHY: Avoids hardcoding OU IDs. If the org layer recreates an OU,
-  #      the SCP layer automatically picks up the new ID on next apply.
+  # Remote state backend — bucket/region/profile supplied via backend.hcl
+  # Run: terraform init -backend-config=backend.hcl
   backend "s3" {
-    bucket         = "idk-tfstate-management-634222035434"
-    key            = "global/scps/terraform.tfstate"
-    region         = "ap-south-1"
+    key          = "global/scps/terraform.tfstate"
     use_lockfile = true
     encrypt      = true
-    profile        = "idk-management"
   }
 }

@@ -52,7 +52,7 @@
 #   -------------------------------------------
 #   The script uses the AWS profile named "idk-management" by default.
 #   This profile must have credentials for your AWS management account
-#   with sufficient permissions (IAM, S3, DynamoDB, Organizations).
+#   with sufficient permissions (IAM, S3, Organizations).
 #
 #   Configure:
 #     aws configure --profile idk-management
@@ -94,9 +94,9 @@
 #     --help                    Show this help and exit.
 #
 #   Examples:
-#     bash scripts/bootstrap/bootstrap.sh --account-id 634222035434
-#     bash scripts/bootstrap/bootstrap.sh --account-id 634222035434 --profile idk-management
-#     bash scripts/bootstrap/bootstrap.sh --account-id 634222035434 --region ap-south-1 --prefix idk
+#     bash scripts/bootstrap/bootstrap.sh --account-id 123456789012
+#     bash scripts/bootstrap/bootstrap.sh --account-id 123456789012 --profile idk-management
+#     bash scripts/bootstrap/bootstrap.sh --account-id 123456789012 --region ap-south-1 --prefix idk
 #
 # =============================================================================
 # WHAT THE SCRIPT CREATES
@@ -147,7 +147,7 @@ usage() {
   echo "  --help                    Show this help and exit"
   echo ""
   echo "Example:"
-  echo "  bash scripts/bootstrap/bootstrap.sh --account-id 634222035434"
+  echo "  bash scripts/bootstrap/bootstrap.sh --account-id 123456789012"
   exit 0
 }
 
@@ -390,15 +390,15 @@ echo "Next steps — run in this order:"
 echo ""
 echo "  1. Initialize and apply the organization layer:"
 echo "       cd terraform/global/organization"
-echo "       terraform init"
+echo "       terraform init -backend-config=backend.hcl"
 echo "       terraform plan    # review before applying"
 echo "       terraform apply"
 echo ""
 echo "  2. Apply Service Control Policies:"
 echo "       cd ../scps"
-echo "       terraform init && terraform plan && terraform apply"
+echo "       terraform init -backend-config=backend.hcl && terraform plan && terraform apply"
 echo ""
 echo "  3. Apply Tag Policies:"
 echo "       cd ../tag-policies"
-echo "       terraform init && terraform plan && terraform apply"
+echo "       terraform init -backend-config=backend.hcl && terraform plan && terraform apply"
 echo "============================================================"

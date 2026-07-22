@@ -15,8 +15,8 @@
 # =============================================================================
 
 provider "aws" {
-  region  = "ap-south-1"
-  profile = "idk-management"
+  region  = var.aws_region
+  profile = var.aws_profile
 
   # Default tags applied to ALL resources created by this provider block.
   # WHY: Ensures no resource is ever created without the minimum required tags,

@@ -46,8 +46,28 @@ The organization layer must be applied first. This layer reads the organization 
 ```bash
 # Run this first if you haven't already
 cd terraform/global/organization
-terraform init && terraform plan && terraform apply
+terraform init -backend-config=backend.hcl && terraform plan && terraform apply
 ```
+
+---
+
+## Setup — Fill In Your Values
+
+**`terraform.tfvars`:**
+```hcl
+management_account_id = "<your-12-digit-account-id>"
+aws_region            = "ap-south-1"
+aws_profile           = "idk-management"
+```
+
+**`backend.hcl`:**
+```hcl
+bucket  = "idk-tfstate-management-<your-account-id>"
+region  = "ap-south-1"
+profile = "idk-management"
+```
+
+Both files are gitignored — your account ID never touches source control.
 
 ---
 
@@ -56,13 +76,8 @@ terraform init && terraform plan && terraform apply
 ```bash
 cd terraform/global/tag-policies
 
-# Download provider, connect to S3 backend, read organization remote state
-terraform init
-
-# Review the tag policy JSON — check keys and allowed values
+terraform init -backend-config=backend.hcl
 terraform plan
-
-# Create and attach the tag policy to the organization root
 terraform apply
 ```
 
@@ -164,9 +179,9 @@ The organization root ID is resolved via `terraform_remote_state` — no hardcod
 All Phase 1 Terraform is now applied. Your governance foundation is in place:
 
 ```
-✓ Bootstrap       — S3 state bucket, DynamoDB lock, AWS Organization
-✓ Organization    — 7 OUs, 9 member accounts
-✓ SCPs            — 5 guardrails covering all OUs
+✓ Bootstrap       — S3 state bucket, AWS Organization
+✓ Organization    — 3 OUs, 3 member accounts
+✓ SCPs            — 4 guardrails covering all OUs
 ✓ Tag Policies    — 12 mandatory tags enforced org-wide
 ```
 
@@ -183,9 +198,12 @@ terraform init && terraform plan && terraform apply
 
 ```
 terraform/global/tag-policies/
-├── main.tf       # Tag policy definition and root attachment
-├── provider.tf   # AWS provider, remote state data source, root ID local
-├── versions.tf   # Terraform and provider version pins, S3 backend config
-├── outputs.tf    # Tag policy ID and ARN exported to remote state
-└── README.md     # This file
+├── main.tf           # Tag policy definition and root attachment
+├── variables.tf      # management_account_id, aws_region, aws_profile
+├── provider.tf       # AWS provider, remote state data source, root ID local
+├── versions.tf       # Terraform and provider version pins, S3 backend config
+├── outputs.tf        # Tag policy ID and ARN exported to remote state
+├── terraform.tfvars  # Your values — gitignored, never committed
+├── backend.hcl       # S3 backend config — gitignored, never committed
+└── README.md         # This file
 ```

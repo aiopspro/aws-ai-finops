@@ -4,54 +4,38 @@
 # =============================================================================
 #
 # WHAT ARE SCPs:
-#   Service Control Policies are JSON policies that define the MAXIMUM
-#   permissions available to accounts within an OU. They do not grant
-#   permissions — they restrict what IAM policies CAN grant.
+#   Service Control Policies define the MAXIMUM permissions available to
+#   accounts within an OU. They do not grant permissions — they restrict
+#   what IAM policies CAN grant.
 #
-#   Think of SCPs as a permission ceiling. Even if an IAM policy in an
-#   account says "Allow *:*", the SCP can still block specific actions.
-#
-# HOW SCPs WORK (the "AND" logic):
-#   Effective permissions = SCP allows AND IAM allows
-#   If SCP denies action X, no IAM policy in that account can allow X.
-#   Even the account's own root user is subject to SCPs.
+#   Think of SCPs as a permission ceiling. Even if an IAM policy says
+#   "Allow *:*", the SCP can still block specific actions.
 #   EXCEPTION: The Management Account is NEVER subject to SCPs.
 #
-# SCP EVALUATION ORDER:
-#   1. An explicit Deny in any SCP always wins
-#   2. For Allow: action must be allowed by BOTH SCP and IAM policy
+# CURRENT OU STRUCTURE (3 OUs):
+#   Security      → idk-log-archive
+#   SharedServices → (empty — account added in future phase)
+#   NonProduction  → idk-development, idk-uat
 #
-# PHASE 1 SCPs IMPLEMENTED:
-#   1. Deny non-Mumbai regions (applied to all OUs except management)
-#   2. Deny root account actions (all OUs)
-#   3. Deny leaving the organization (all OUs)
-#   4. Deny all — Suspended OU only
-#   5. Deny expensive services in Sandbox OU
+# SCPs IMPLEMENTED (Phase 1):
+#   1. Deny non-Mumbai regions        → all 3 OUs
+#   2. Deny root account actions      → all 3 OUs
+#   3. Protect security services      → all 3 OUs
+#   4. NonProduction cost guardrails  → NonProduction OU only
 # =============================================================================
 
 # =============================================================================
 # SCP 1: REGION RESTRICTION — Deny actions outside ap-south-1
 # =============================================================================
 # WHY THIS SCP IS CRITICAL:
-#   Without region restriction, a compromised account or misconfigured
-#   automation could accidentally spin up resources in us-east-1, eu-west-1,
-#   etc. This creates:
-#   - Unexpected costs (you won't see them until the bill arrives)
-#   - Data residency violations (data leaving India without approval)
-#   - Compliance failures (regulatory data must stay in approved regions)
+#   Without region restriction, a compromised account could spin up resources
+#   in any AWS region — creating unexpected costs and data residency violations.
 #
-# WHY ALLOW GLOBAL SERVICES:
-#   Many AWS services are "global" — they don't have a region in their API
-#   calls. IAM, STS, S3 (bucket creation), Route 53, CloudFront, WAF,
-#   Trusted Advisor, Budgets, Cost Explorer — these would be blocked if we
-#   denied everything outside ap-south-1 without exceptions.
-#   The Condition "StringNotLike" with "aws:RequestedRegion" only applies
-#   to regional services, so we must explicitly exempt global services.
-#
-# ENTERPRISE ALTERNATIVE:
-#   Some enterprises use "Allow only ap-south-1" instead of "Deny others".
-#   The Deny approach is more robust — it blocks new regions by default
-#   even if AWS adds new regions in the future.
+# WHY NotAction INSTEAD OF Action "*":
+#   Many AWS services (IAM, STS, Route 53, CloudFront, Budgets) are "global"
+#   and have no region in their API calls. Using Action "*" with a region
+#   condition would block these global services. NotAction lets us exclude
+#   them while still blocking all regional services outside Mumbai.
 # =============================================================================
 resource "aws_organizations_policy" "deny_non_mumbai_regions" {
   name        = "idk-deny-non-mumbai-regions"
@@ -64,12 +48,6 @@ resource "aws_organizations_policy" "deny_non_mumbai_regions" {
       {
         Sid    = "DenyNonMumbaiRegions"
         Effect = "Deny"
-        # NotAction = deny everything EXCEPT these global services
-        # WHY NotAction instead of Action "*":
-        #   If we used Action "*" with a condition on region, we'd block
-        #   global services too. NotAction lets us exclude global services
-        #   from the region restriction while still blocking all regional
-        #   services outside Mumbai.
         NotAction = [
           # Identity & Access Management — global service
           "iam:*",
@@ -91,7 +69,7 @@ resource "aws_organizations_policy" "deny_non_mumbai_regions" {
           "trustedadvisor:*",
           "health:*",
 
-          # Route 53 — global DNS service
+          # Route 53 — global DNS
           "route53:*",
           "route53domains:*",
           "route53resolver:*",
@@ -105,7 +83,7 @@ resource "aws_organizations_policy" "deny_non_mumbai_regions" {
           # ACM (us-east-1 certs for CloudFront)
           "acm:*",
 
-          # S3 — bucket management APIs are global even though data is regional
+          # S3 bucket management APIs are global even though data is regional
           "s3:CreateBucket",
           "s3:DeleteBucket",
           "s3:ListAllMyBuckets",
@@ -119,11 +97,11 @@ resource "aws_organizations_policy" "deny_non_mumbai_regions" {
           "sso-directory:*",
           "identitystore:*",
 
-          # Security Hub, GuardDuty aggregation (management APIs)
+          # Security Hub, GuardDuty — management APIs
           "securityhub:*",
           "guardduty:*",
 
-          # CloudTrail — can be global trail
+          # CloudTrail — can be a global trail
           "cloudtrail:*",
 
           # Config — aggregator configuration is global
@@ -146,15 +124,10 @@ resource "aws_organizations_policy" "deny_non_mumbai_regions" {
   }
 }
 
-# Attach region restriction to ALL OUs (not root — management account is exempt from SCPs anyway)
+# Attach region restriction to all 3 OUs
 resource "aws_organizations_policy_attachment" "region_restriction_security" {
   policy_id = aws_organizations_policy.deny_non_mumbai_regions.id
   target_id = local.ou_security_id
-}
-
-resource "aws_organizations_policy_attachment" "region_restriction_infrastructure" {
-  policy_id = aws_organizations_policy.deny_non_mumbai_regions.id
-  target_id = local.ou_infra_id
 }
 
 resource "aws_organizations_policy_attachment" "region_restriction_shared_services" {
@@ -162,42 +135,26 @@ resource "aws_organizations_policy_attachment" "region_restriction_shared_servic
   target_id = local.ou_shared_id
 }
 
-resource "aws_organizations_policy_attachment" "region_restriction_production" {
-  policy_id = aws_organizations_policy.deny_non_mumbai_regions.id
-  target_id = local.ou_production_id
-}
-
 resource "aws_organizations_policy_attachment" "region_restriction_non_production" {
   policy_id = aws_organizations_policy.deny_non_mumbai_regions.id
   target_id = local.ou_nonprod_id
-}
-
-resource "aws_organizations_policy_attachment" "region_restriction_sandbox" {
-  policy_id = aws_organizations_policy.deny_non_mumbai_regions.id
-  target_id = local.ou_sandbox_id
 }
 
 # =============================================================================
 # SCP 2: PROTECT ROOT ACCOUNT ACTIONS
 # =============================================================================
 # WHY:
-#   The root user of each account has special privileges that bypass IAM.
-#   CIS Benchmark and AWS Security Best Practices require that root is
-#   never used for day-to-day operations. This SCP doesn't prevent root
-#   login (that would lock out recovery) but prevents specific high-risk
-#   root-only actions from being performed programmatically.
+#   The root user has special privileges that bypass IAM. This SCP prevents
+#   high-risk root-only actions from being performed programmatically.
+#   It also prevents accounts from leaving the organization to escape SCPs.
 #
-# WHAT IT DENIES:
-#   - Creating root access keys (long-lived root credentials = catastrophic)
-#   - Changing account settings that only root can do (done in management)
-#
-# NOTE: This SCP does NOT prevent humans from logging in as root.
-#   That's enforced by organizational policy and MFA requirements.
-#   IAM Identity Center (Phase 3) will make root login unnecessary.
+# NOTE: This does NOT prevent humans logging in as root — that is enforced
+#   by organizational policy and MFA. IAM Identity Center (future phase)
+#   will make root login unnecessary entirely.
 # =============================================================================
 resource "aws_organizations_policy" "deny_root_actions" {
   name        = "idk-deny-root-account-actions"
-  description = "Prevent use of root credentials for day-to-day operations. CIS Benchmark 1.1."
+  description = "Prevent use of root credentials and leaving the organization. CIS Benchmark 1.1."
   type        = "SERVICE_CONTROL_POLICY"
 
   content = jsonencode({
@@ -207,32 +164,24 @@ resource "aws_organizations_policy" "deny_root_actions" {
         Sid    = "DenyRootAccountActions"
         Effect = "Deny"
         Action = [
-          # Prevent creating long-lived root access keys
           "iam:CreateVirtualMFADevice",
           "iam:DeleteVirtualMFADevice",
-
-          # Prevent root from creating access keys for itself
-          # (root access keys are the most dangerous credential in AWS)
+          # Root access keys are the most dangerous credential in AWS
           "iam:CreateAccessKey"
         ]
         Resource = "*"
         Condition = {
           StringLike = {
-            "aws:PrincipalArn" = [
-              "arn:aws:iam::*:root"
-            ]
+            "aws:PrincipalArn" = ["arn:aws:iam::*:root"]
           }
         }
       },
       {
-        # Deny anyone from leaving the organization
-        # WHY: A compromised account could "leave" the org to escape SCPs.
-        #      This closes that escape hatch.
+        # A compromised account could leave the org to escape SCPs.
+        # This closes that escape hatch permanently.
         Sid    = "DenyLeavingOrganization"
         Effect = "Deny"
-        Action = [
-          "organizations:LeaveOrganization"
-        ]
+        Action = ["organizations:LeaveOrganization"]
         Resource = "*"
       }
     ]
@@ -245,15 +194,10 @@ resource "aws_organizations_policy" "deny_root_actions" {
   }
 }
 
-# Attach root protection to ALL OUs
+# Attach root protection to all 3 OUs
 resource "aws_organizations_policy_attachment" "root_protection_security" {
   policy_id = aws_organizations_policy.deny_root_actions.id
   target_id = local.ou_security_id
-}
-
-resource "aws_organizations_policy_attachment" "root_protection_infrastructure" {
-  policy_id = aws_organizations_policy.deny_root_actions.id
-  target_id = local.ou_infra_id
 }
 
 resource "aws_organizations_policy_attachment" "root_protection_shared_services" {
@@ -261,19 +205,9 @@ resource "aws_organizations_policy_attachment" "root_protection_shared_services"
   target_id = local.ou_shared_id
 }
 
-resource "aws_organizations_policy_attachment" "root_protection_production" {
-  policy_id = aws_organizations_policy.deny_root_actions.id
-  target_id = local.ou_production_id
-}
-
 resource "aws_organizations_policy_attachment" "root_protection_non_production" {
   policy_id = aws_organizations_policy.deny_root_actions.id
   target_id = local.ou_nonprod_id
-}
-
-resource "aws_organizations_policy_attachment" "root_protection_sandbox" {
-  policy_id = aws_organizations_policy.deny_root_actions.id
-  target_id = local.ou_sandbox_id
 }
 
 # =============================================================================
@@ -281,19 +215,17 @@ resource "aws_organizations_policy_attachment" "root_protection_sandbox" {
 # =============================================================================
 # WHY:
 #   GuardDuty, CloudTrail, SecurityHub, and Config are your security eyes.
-#   If an attacker compromises an account, their FIRST action is usually to
+#   If an attacker compromises an account, their first action is usually to
 #   disable these services to prevent detection. This SCP makes that
-#   impossible — even for account administrators.
+#   impossible even for account administrators.
 #
 # ENTERPRISE PATTERN:
 #   "Security tools must be enabled and cannot be disabled by workload accounts"
-#   is a universal enterprise requirement. This is how Control Tower's
-#   "strongly recommended" guardrails work — we're implementing the same
-#   protection manually.
+#   is a universal enterprise requirement — same pattern used by AWS Control Tower.
 # =============================================================================
 resource "aws_organizations_policy" "protect_security_services" {
   name        = "idk-protect-security-services"
-  description = "Prevent disabling or modifying GuardDuty, CloudTrail, Config, SecurityHub. Security cannot be turned off."
+  description = "Prevent disabling GuardDuty, CloudTrail, Config, SecurityHub. Security cannot be turned off."
   type        = "SERVICE_CONTROL_POLICY"
 
   content = jsonencode({
@@ -326,7 +258,6 @@ resource "aws_organizations_policy" "protect_security_services" {
         Sid    = "DenyModifyingLogArchive"
         Effect = "Deny"
         Action = [
-          # Prevent deleting or modifying the centralized log S3 bucket
           "s3:DeleteBucket",
           "s3:DeleteBucketPolicy",
           "s3:PutBucketPolicy",
@@ -334,7 +265,6 @@ resource "aws_organizations_policy" "protect_security_services" {
           "s3:PutReplicationConfiguration"
         ]
         Resource = [
-          # Log archive bucket ARN pattern
           "arn:aws:s3:::idk-logs-*",
           "arn:aws:s3:::idk-cloudtrail-*"
         ]
@@ -370,15 +300,10 @@ resource "aws_organizations_policy" "protect_security_services" {
   }
 }
 
-# Attach security protection to all OUs
+# Attach security protection to all 3 OUs
 resource "aws_organizations_policy_attachment" "security_protection_security_ou" {
   policy_id = aws_organizations_policy.protect_security_services.id
   target_id = local.ou_security_id
-}
-
-resource "aws_organizations_policy_attachment" "security_protection_infrastructure" {
-  policy_id = aws_organizations_policy.protect_security_services.id
-  target_id = local.ou_infra_id
 }
 
 resource "aws_organizations_policy_attachment" "security_protection_shared_services" {
@@ -386,52 +311,42 @@ resource "aws_organizations_policy_attachment" "security_protection_shared_servi
   target_id = local.ou_shared_id
 }
 
-resource "aws_organizations_policy_attachment" "security_protection_production" {
-  policy_id = aws_organizations_policy.protect_security_services.id
-  target_id = local.ou_production_id
-}
-
 resource "aws_organizations_policy_attachment" "security_protection_non_production" {
   policy_id = aws_organizations_policy.protect_security_services.id
   target_id = local.ou_nonprod_id
 }
 
-resource "aws_organizations_policy_attachment" "security_protection_sandbox" {
-  policy_id = aws_organizations_policy.protect_security_services.id
-  target_id = local.ou_sandbox_id
-}
-
 # =============================================================================
-# SCP 4: SANDBOX COST GUARDRAILS
+# SCP 4: NON-PRODUCTION COST GUARDRAILS
 # =============================================================================
 # WHY:
-#   Sandbox accounts are for experimentation. The risk is someone accidentally
-#   launches expensive resources (GPU instances, large RDS, high-memory EC2)
-#   that run up the bill. These denies prevent the most common expensive
-#   mistakes while still allowing normal lab work.
+#   The NonProduction OU hosts your primary lab accounts. The risk is
+#   accidentally launching expensive resources (GPU instances, large RDS,
+#   Reserved Instance purchases) that run up the bill.
 #
 # FINOPS PRINCIPLE: "Guardrails before budgets"
 #   Budgets alert you AFTER you've spent money. SCPs prevent the spend
 #   from happening at all. Both are needed — SCPs for hard stops,
 #   Budgets for soft alerts.
+#
+# LAB NOTE: This SCP still allows t3/t4g, m5, c5 instances and standard
+#   RDS classes — everything you need for AI and FinOps lab work.
 # =============================================================================
-resource "aws_organizations_policy" "sandbox_cost_guardrails" {
-  name        = "idk-sandbox-cost-guardrails"
-  description = "Prevent expensive resource types in Sandbox OU. Protects lab budget."
+resource "aws_organizations_policy" "non_production_cost_guardrails" {
+  name        = "idk-non-production-cost-guardrails"
+  description = "Prevent expensive resource types in NonProduction OU. Protects lab budget."
   type        = "SERVICE_CONTROL_POLICY"
 
   content = jsonencode({
     Version = "2012-10-17"
     Statement = [
       {
+        # Block GPU and high-memory EC2 instances — can cost $2–$30/hour
         Sid    = "DenyExpensiveEC2Families"
         Effect = "Deny"
         Action = ["ec2:RunInstances"]
         Resource = "arn:aws:ec2:*:*:instance/*"
         Condition = {
-          # Block GPU instances (p, g families) — can cost $2–$30/hour
-          # Block high-memory instances (x, u families) — enterprise-grade pricing
-          # Block bare metal — not needed for lab work
           StringLike = {
             "ec2:InstanceType" = [
               "p2.*", "p3.*", "p4.*", "p5.*",
@@ -444,6 +359,7 @@ resource "aws_organizations_policy" "sandbox_cost_guardrails" {
         }
       },
       {
+        # Block large RDS instance classes
         Sid    = "DenyLargeRDS"
         Effect = "Deny"
         Action = [
@@ -454,18 +370,15 @@ resource "aws_organizations_policy" "sandbox_cost_guardrails" {
         Condition = {
           StringLike = {
             "rds:DatabaseClass" = [
-              "db.r5.*",
-              "db.r6.*",
-              "db.x1.*",
-              "db.x2.*"
+              "db.r5.*", "db.r6.*",
+              "db.x1.*", "db.x2.*"
             ]
           }
         }
       },
       {
-        # Prevent purchasing Reserved Instances from sandbox
-        # WHY: RIs are 1-3 year commitments costing thousands of dollars.
-        #      Only FinOps team should be authorized to purchase them.
+        # Reserved Instances are 1-3 year commitments costing thousands.
+        # Only FinOps team should be authorized to purchase them.
         Sid    = "DenyReservedInstancePurchases"
         Effect = "Deny"
         Action = [
@@ -479,57 +392,13 @@ resource "aws_organizations_policy" "sandbox_cost_guardrails" {
   })
 
   tags = {
-    SCPPurpose  = "Cost guardrails for Sandbox OU"
+    SCPPurpose  = "Cost guardrails for NonProduction OU"
     Phase       = "1"
     Criticality = "high"
   }
 }
 
-resource "aws_organizations_policy_attachment" "sandbox_cost_guardrails" {
-  policy_id = aws_organizations_policy.sandbox_cost_guardrails.id
-  target_id = local.ou_sandbox_id
-}
-
-# =============================================================================
-# SCP 5: SUSPENDED OU — DENY ALL
-# =============================================================================
-# WHY:
-#   Accounts in the Suspended OU are either quarantined or pending closure.
-#   Nothing should be creatable or modifiable. The only exception is billing
-#   reads (needed to verify final charges before account closure).
-# =============================================================================
-resource "aws_organizations_policy" "deny_all_suspended" {
-  name        = "idk-deny-all-suspended"
-  description = "Deny all actions in Suspended OU accounts except billing reads. Quarantine policy."
-  type        = "SERVICE_CONTROL_POLICY"
-
-  content = jsonencode({
-    Version = "2012-10-17"
-    Statement = [
-      {
-        Sid    = "DenyAllExceptBilling"
-        Effect = "Deny"
-        NotAction = [
-          "aws-portal:View*",
-          "budgets:View*",
-          "ce:Get*",
-          "ce:List*",
-          "organizations:Describe*",
-          "organizations:List*"
-        ]
-        Resource = "*"
-      }
-    ]
-  })
-
-  tags = {
-    SCPPurpose  = "Full deny for suspended/quarantined accounts"
-    Phase       = "1"
-    Criticality = "critical"
-  }
-}
-
-resource "aws_organizations_policy_attachment" "deny_all_suspended" {
-  policy_id = aws_organizations_policy.deny_all_suspended.id
-  target_id = local.ou_suspended_id
+resource "aws_organizations_policy_attachment" "non_production_cost_guardrails" {
+  policy_id = aws_organizations_policy.non_production_cost_guardrails.id
+  target_id = local.ou_nonprod_id
 }

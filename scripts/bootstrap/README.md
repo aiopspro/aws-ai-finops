@@ -238,7 +238,7 @@ Once the script finishes, run Terraform in this order:
 **1. Organization layer** — creates OUs and member accounts:
 ```
 cd terraform/global/organization
-terraform init
+terraform init -backend-config=backend.hcl
 terraform plan        # review the plan before applying
 terraform apply
 ```
@@ -246,13 +246,13 @@ terraform apply
 **2. Service Control Policies** — attaches governance guardrails:
 ```
 cd ../scps
-terraform init && terraform plan && terraform apply
+terraform init -backend-config=backend.hcl && terraform plan && terraform apply
 ```
 
 **3. Tag Policies** — enforces mandatory tagging standards:
 ```
 cd ../tag-policies
-terraform init && terraform plan && terraform apply
+terraform init -backend-config=backend.hcl && terraform plan && terraform apply
 ```
 
 ---

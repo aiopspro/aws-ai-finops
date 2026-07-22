@@ -25,18 +25,11 @@ terraform {
     }
   }
 
-  # Remote state backend — created by bootstrap.sh
-  # WHY S3 + DynamoDB:
-  #   S3 stores the state file (infrastructure reality snapshot).
-  #   DynamoDB provides distributed locking (prevents concurrent writes).
-  #   This is the AWS-native, lowest-cost remote state solution.
-  #   Alternative: Terraform Cloud — more features but adds cost and vendor lock-in.
+  # Remote state backend — bucket/region/profile supplied via backend.hcl
+  # Run: terraform init -backend-config=backend.hcl
   backend "s3" {
-    bucket         = "idk-tfstate-management-634222035434"
-    key            = "global/organization/terraform.tfstate"
-    region         = "ap-south-1"
+    key          = "global/organization/terraform.tfstate"
     use_lockfile = true
     encrypt      = true
-    profile        = "idk-management"
   }
 }

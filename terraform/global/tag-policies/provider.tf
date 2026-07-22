@@ -4,8 +4,8 @@
 # =============================================================================
 
 provider "aws" {
-  region  = "ap-south-1"
-  profile = "idk-management"
+  region  = var.aws_region
+  profile = var.aws_profile
 
   default_tags {
     tags = {
@@ -23,10 +23,10 @@ provider "aws" {
 data "terraform_remote_state" "organization" {
   backend = "s3"
   config = {
-    bucket  = "idk-tfstate-management-634222035434"
+    bucket  = "idk-tfstate-management-${var.management_account_id}"
     key     = "global/organization/terraform.tfstate"
-    region  = "ap-south-1"
-    profile = "idk-management"
+    region  = var.aws_region
+    profile = var.aws_profile
   }
 }
 

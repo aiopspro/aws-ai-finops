@@ -128,7 +128,7 @@ HOW TO RUN
   All available options:
 
     --account-id    REQUIRED. Your 12-digit AWS management account ID.
-                    Example: --account-id 634222035434
+                    Example: --account-id 123456789012
 
     --profile       AWS credentials profile to use.
                     Default: value of AWS_PROFILE env var, or "idk-management".
@@ -166,16 +166,16 @@ AFTER THIS SCRIPT — WHAT TO DO NEXT
   Once this script completes successfully, run Terraform:
 
     cd terraform/global/organization
-    terraform init      # Downloads providers, connects to S3 backend
+    terraform init -backend-config=backend.hcl      # Downloads providers, connects to S3 backend
     terraform plan      # Shows what will be created (review before applying)
     terraform apply     # Creates OUs, member accounts, org structure
 
   Then:
     cd ../scps
-    terraform init && terraform plan && terraform apply   # Service Control Policies
+    terraform init -backend-config=backend.hcl && terraform plan && terraform apply   # Service Control Policies
 
     cd ../tag-policies
-    terraform init && terraform plan && terraform apply   # Tag Policies
+    terraform init -backend-config=backend.hcl && terraform plan && terraform apply   # Tag Policies
 
 =============================================================================
 """
@@ -234,9 +234,9 @@ def parse_args() -> argparse.Namespace:
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog=(
             "Examples:\n"
-            "  python bootstrap.py --account-id 634222035434\n"
-            "  python bootstrap.py --account-id 634222035434 --profile my-profile\n"
-            "  python bootstrap.py --account-id 634222035434 --region ap-south-1 --prefix idk\n"
+            "  python bootstrap.py --account-id 123456789012\n"
+            "  python bootstrap.py --account-id 123456789012 --profile my-profile\n"
+            "  python bootstrap.py --account-id 123456789012 --region ap-south-1 --prefix idk\n"
         ),
     )
 
@@ -536,17 +536,17 @@ def print_summary(bucket_name: str, region: str) -> None:
     print()
     print("  1. Initialize and apply the organization layer:")
     print("       cd terraform/global/organization")
-    print("       terraform init")
+    print("       terraform init -backend-config=backend.hcl")
     print("       terraform plan    # review before applying")
     print("       terraform apply")
     print()
     print("  2. Apply Service Control Policies:")
     print("       cd ../scps")
-    print("       terraform init && terraform plan && terraform apply")
+    print("       terraform init -backend-config=backend.hcl && terraform plan && terraform apply")
     print()
     print("  3. Apply Tag Policies:")
     print("       cd ../tag-policies")
-    print("       terraform init && terraform plan && terraform apply")
+    print("       terraform init -backend-config=backend.hcl && terraform plan && terraform apply")
     print(sep)
 
 

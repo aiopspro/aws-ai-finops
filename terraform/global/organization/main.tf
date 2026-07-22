@@ -46,7 +46,7 @@ locals {
 # =============================================================================
 # ORGANIZATIONAL UNITS
 # =============================================================================
-# These 4 OUs represent the core governance boundaries for the lab.
+# These 3 OUs represent the core governance boundaries for the lab.
 # SCPs will be attached to each OU in the scps layer (Phase 2).
 #
 # ENTERPRISE PATTERN: OUs = security/governance boundaries, not team boundaries.
@@ -65,22 +65,6 @@ resource "aws_organizations_organizational_unit" "security" {
 
   tags = {
     Description = "Security tooling and immutable log archive accounts"
-    Criticality = "critical"
-  }
-}
-
-# ── Infrastructure OU ─────────────────────────────────────────────────────────
-# LAB PURPOSE: Reserved for future networking practice (Transit Gateway,
-#   Route 53 Resolver, VPC sharing). Empty for now — kept to mirror
-#   real enterprise landing zones where networking is always isolated.
-# ENTERPRISE INSIGHT: Centralised networking is a key enterprise pattern.
-#   Keeping this OU even when empty trains the habit of separation.
-resource "aws_organizations_organizational_unit" "infrastructure" {
-  name      = "Infrastructure"
-  parent_id = local.root_id
-
-  tags = {
-    Description = "Core networking and infrastructure accounts (future use)"
     Criticality = "critical"
   }
 }

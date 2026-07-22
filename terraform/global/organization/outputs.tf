@@ -34,11 +34,6 @@ output "ou_security_id" {
   value       = aws_organizations_organizational_unit.security.id
 }
 
-output "ou_infrastructure_id" {
-  description = "OU ID for the Infrastructure organizational unit"
-  value       = aws_organizations_organizational_unit.infrastructure.id
-}
-
 output "ou_shared_services_id" {
   description = "OU ID for the Shared Services organizational unit"
   value       = aws_organizations_organizational_unit.shared_services.id

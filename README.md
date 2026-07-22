@@ -1,352 +1,197 @@
-# IDK Digital Solutions — AWS Enterprise Landing Zone
-## Project Roadmap & Progress Tracker
+# IDK Digital Solutions — AWS Learning Landing Zone
 
-**Last updated:** 2026-07-13
-**Current phase:** Phase 1 — Complete
-**Next action:** Fill in 9 email addresses → run `terraform apply`
+## Purpose
 
----
+This repository is a personal AWS learning lab built with Terraform. It applies enterprise landing-zone practices at a deliberately small scale: separate AWS accounts, organization-wide guardrails, consistent tagging, centralized logging, and cost controls.
 
-## Changelog
-
-| Version | Date | Phase | What Changed |
-|---|---|---|---|
-| v1.0 | 2026-07-13 | Phase 1 complete | Bootstrap, Organization, SCPs, Tag Policies, ADRs, READMEs |
-
-> When you complete a phase, add a row here with the date and a one-line summary of what was built.
-
----
-
-## Project Overview
-
-A production-grade AWS Enterprise Landing Zone built as a personal learning lab.
+The lab is designed for hands-on AI platform engineering and FinOps practice in `ap-south-1` (Mumbai), while keeping the account structure and monthly spend manageable.
 
 | Property | Value |
 |---|---|
-| Company | IDK Digital Solutions |
-| Management Account | `idk-management` |
-| Primary Region | `ap-south-1` (Mumbai) |
-| Monthly Budget | ₹1,000–₹1,500 |
-| IaC Tool | Terraform |
+| Management account | `idk-management` |
+| Primary region | `ap-south-1` (Mumbai) |
+| IaC | Terraform >= 1.6, AWS provider ~> 5.0 |
+| State | Hardened S3 bucket with native S3 lock files |
+| Access model | Per-account IAM users and least-privilege roles |
+| Budget target | ₹1,000–₹1,500/month |
 
----
+> This is a lab, not a production reference implementation. In particular, it intentionally uses IAM users rather than IAM Identity Center. See [ADR-002](docs/decisions/ADR-002-iam-identity-center.md).
 
-## Repository Structure
+## Current Architecture
 
-```
-aws-idk-lab/
-├── docs/
-│   └── decisions/          # Architecture Decision Records (ADRs)
-├── scripts/
-│   └── bootstrap/          # One-time bootstrap scripts (run before Terraform)
-└── terraform/
-    └── global/             # Org-wide configs (run from management account)
-        ├── organization/   # Phase 1 — OUs and member accounts
-        ├── scps/           # Phase 1 — Service Control Policies
-        ├── tag-policies/   # Phase 1 — Tag enforcement
-        ├── identity-center/ # Phase 2 — SSO (not started)
-        ├── finops/          # Phase 6 — Cost management (not started)
-        └── backup-policies/ # Phase 7 — Backup automation (not started)
-    └── accounts/           # Per-account configs (run from each member account)
-        ├── network/        # Phase 3 — VPC, subnets, routing (not started)
-        ├── ai-lab/         # Phase 4 — EC2, Docker, AI stack (not started)
-        ├── security/       # Phase 5 — GuardDuty, SecurityHub (not started)
-        └── log-archive/    # Phase 5 — CloudTrail, centralised logs (not started)
+The Terraform source of truth defines three Organizational Units (OUs) and three member accounts.
+
+```text
+AWS Organization (idk-management)
+├── Security
+│   └── idk-log-archive      Centralized CloudTrail and security logs
+├── SharedServices
+│   └── (empty for now)      Reserved for future shared tooling
+└── NonProduction
+    ├── idk-development      Primary AI and FinOps experimentation account
+    └── idk-uat              Separate account for deployment validation
 ```
 
----
+The management account is used only for Terraform, organization governance, and billing. Workloads should run in member accounts, primarily `idk-development`.
 
-## AWS Organization
-
-### Accounts (10 total)
-
-| Account | OU | Purpose | Compute |
-|---|---|---|---|
-| `idk-management` | Root | Terraform, billing, governance | None |
-| `idk-log-archive` | Security | Immutable centralised log storage | None |
-| `idk-security` | Security | GuardDuty admin, SecurityHub aggregator | None |
-| `idk-network` | Infrastructure | Transit Gateway, Route 53, shared VPCs | None |
-| `idk-shared-services` | SharedServices | IAM Identity Center, shared tooling | None |
-| `idk-production` | Production | Production workloads | None |
-| `idk-development` | NonProduction | Feature development | None |
-| `idk-uat` | NonProduction | User acceptance testing | None |
-| `idk-ai-lab` | Sandbox | Agentic AI platform | **Yes — Phase 4** |
-| `idk-finops-lab` | Sandbox | FinOps tooling experimentation | None |
-
-### Organizational Units (7 OUs)
-
-| OU | Accounts | SCP Strictness |
-|---|---|---|
-| Security | log-archive, security | Highest — logs cannot be modified |
-| Infrastructure | network | High — networking changes controlled |
-| SharedServices | shared-services | Medium |
-| Production | production | High — change management enforced |
-| NonProduction | development, uat | Medium |
-| Sandbox | ai-lab, finops-lab | Low + cost guardrails |
-| Suspended | (none currently) | Deny all — quarantine zone |
-
----
-
-## Phase Progress
-
----
+## What Is Implemented
 
 ### Phase 0 — Bootstrap
-**Status: Complete**
 
-One-time setup that must run before any Terraform.
+`scripts/bootstrap/` contains idempotent Python and Bash bootstrap scripts. They create the prerequisite infrastructure that Terraform cannot create before its own remote backend exists:
 
-| Task | Status | File |
-|---|---|---|
-| Python bootstrap script (Windows + Linux) | Done | `scripts/bootstrap/bootstrap.py` |
-| Bash bootstrap script (Linux) | Done | `scripts/bootstrap/bootstrap.sh` |
-| S3 state bucket created | Done | `idk-tfstate-management-<account-id>` |
-| DynamoDB lock table created | Done | `idk-terraform-lock` |
-| AWS Organization created | Done | Management console |
-| SCP, Tag Policy, Backup Policy types enabled | Done | Management console |
-| README for bootstrap | Done | `scripts/bootstrap/README.md` |
-
----
+- Hardened S3 state bucket: versioning, AES-256 encryption, public-access block, and a 90-day noncurrent-version lifecycle rule.
+- AWS Organization with all features enabled.
+- Service Control Policy, Tag Policy, and Backup Policy types enabled.
+- Native S3 state locking (`use_lockfile = true`); no DynamoDB lock table is required.
 
 ### Phase 1 — Governance Foundation
-**Status: Complete (pending email setup)**
 
-| Task | Status | File |
-|---|---|---|
-| 7 Organizational Units | Done | `terraform/global/organization/main.tf` |
-| 9 member accounts defined | Done | `terraform/global/organization/main.tf` |
-| **Fill in 9 account email addresses** | **PENDING** | `terraform/global/organization/main.tf` lines 175, 199, 220, 239, 258, 279, 299, 319, 339 |
-| SCP: Deny non-Mumbai regions | Done | `terraform/global/scps/main.tf` |
-| SCP: Deny root account actions | Done | `terraform/global/scps/main.tf` |
-| SCP: Protect security services | Done | `terraform/global/scps/main.tf` |
-| SCP: Sandbox cost guardrails | Done | `terraform/global/scps/main.tf` |
-| SCP: Deny all (Suspended OU) | Done | `terraform/global/scps/main.tf` |
-| Tag Policy: 12 mandatory tags | Done | `terraform/global/tag-policies/main.tf` |
-| ADR-001: No Control Tower | Done | `docs/decisions/ADR-001-no-control-tower.md` |
-| ADR-002: IAM Identity Center | Done | `docs/decisions/ADR-002-iam-identity-center.md` |
-| ADR-003: Single region | Done | `docs/decisions/ADR-003-single-region.md` |
-| README: organization layer | Done | `terraform/global/organization/README.md` |
-| README: scps layer | Pending | `terraform/global/scps/README.md` |
-| README: tag-policies layer | Pending | `terraform/global/tag-policies/README.md` |
+The three Terraform configurations under `terraform/global/` provide the current governance layer:
 
-**How to run Phase 1:**
-```bash
-# Step 1 — fill in emails in organization/main.tf first
+| Configuration | Responsibility |
+|---|---|
+| `organization/` | Creates the three OUs and three member accounts. |
+| `scps/` | Attaches organization guardrails to OUs. |
+| `tag-policies/` | Defines and attaches the enterprise tag policy to the organization root. |
 
-# Step 2 — organization (OUs + accounts)
-cd terraform/global/organization
-terraform init && terraform plan && terraform apply
+The SCPs provide a permission ceiling; they do not grant access. They currently:
 
-# Step 3 — SCPs
-cd ../scps
-terraform init && terraform plan && terraform apply
+- Deny regional AWS actions outside Mumbai, with necessary global-service exceptions.
+- Deny selected root-user actions and prevent member accounts leaving the organization.
+- Protect GuardDuty, CloudTrail, Security Hub, AWS Config, and log-archive buckets from destructive changes.
+- Prevent expensive GPU, high-memory, bare-metal EC2, and large RDS classes in `NonProduction`.
 
-# Step 4 — tag policies
-cd ../tag-policies
-terraform init && terraform plan && terraform apply
+The tag policy standardizes 12 tags. It reports tag-policy noncompliance, but does not block resource creation; blocking/remediation belongs in the planned security phase.
+
+## Deployment Status and Immediate Next Step
+
+The Terraform code for Phase 1 is present. Before the first apply, replace the three placeholder email addresses in `terraform/global/organization/main.tf` with globally unique email addresses. Gmail plus-addresses are convenient for a personal lab.
+
+Then create local, gitignored configuration files for each Terraform layer:
+
+```hcl
+# terraform.tfvars
+management_account_id = "123456789012"
+aws_region            = "ap-south-1"
+aws_profile           = "idk-management"
 ```
 
----
+```hcl
+# backend.hcl
+bucket  = "idk-tfstate-management-123456789012"
+region  = "ap-south-1"
+profile = "idk-management"
+```
 
-### Phase 2 — IAM Identity Center (SSO)
-**Status: Not started**
+Run the layers in this order and review every plan before applying:
 
-All human access to AWS accounts goes through IAM Identity Center (per ADR-002). No long-lived IAM users.
+```powershell
+# One time: creates state storage and the AWS Organization
+python scripts/bootstrap/bootstrap.py --account-id 123456789012
 
-| Task | Status | Notes |
+cd terraform/global/organization
+terraform init -backend-config=backend.hcl
+terraform plan
+terraform apply
+
+cd ../scps
+terraform init -backend-config=backend.hcl
+terraform plan
+terraform apply
+
+cd ../tag-policies
+terraform init -backend-config=backend.hcl
+terraform plan
+terraform apply
+```
+
+If the OUs or member accounts already exist, import them before applying. See the [organization README](terraform/global/organization/README.md) for import commands.
+
+## Complete Forward Plan
+
+Future phases are intentionally scoped to the three-account lab. Each phase should be implemented only after the previous phase is stable and its Terraform plan has been reviewed.
+
+| Phase | Outcome | Planned implementation |
 |---|---|---|
-| Enable IAM Identity Center | Pending | Enable in `idk-shared-services` account |
-| Create permission sets | Pending | AdministratorAccess, ReadOnlyAccess, BillingAccess, SecurityAudit |
-| Create groups | Pending | platform-team, finops-team, security-team, developers |
-| Assign groups to accounts | Pending | Each group maps to specific accounts + permission sets |
-| Break-glass access design | Pending | Emergency root-equivalent access procedure document |
-| Terraform config | Pending | `terraform/global/identity-center/` |
-| ADR-004: SSO group design | Pending | `docs/decisions/ADR-004-sso-groups.md` |
+| 2 — Lab IAM access | Secure usable access without IAM Identity Center. | Create a named administrator IAM user in each account, require MFA, avoid root use, create cross-account roles where needed, document CLI profiles, and rotate/remove access keys. A future `terraform/global/iam-access/` configuration can manage policies, users, groups, and roles. |
+| 3 — Development networking | A low-cost network for experiments. | Create a VPC in `idk-development`, two AZ subnets, Internet Gateway, route tables, restrictive security groups, and S3/DynamoDB gateway endpoints. Prefer no NAT Gateway unless a workload proves it is necessary. Document the CIDR allocation and use `terraform/accounts/development/network/`. |
+| 4 — AI lab workload | A small, disposable AI development environment. | Deploy a cost-capped EC2 instance (start with `t3.small`, 20 GB `gp3`), an instance role with least privilege, SSM Session Manager access, and Docker/Python tooling. Use `idk-development`; do not create a separate AI account. Stop or terminate resources when idle. |
+| 5 — Logging and security baseline | Centralized audit records and basic detective controls. | Create immutable log storage in `idk-log-archive`, an organization CloudTrail, GuardDuty, Security Hub, AWS Config, and a small set of rules for public S3, encryption, and required tags. Delegate administration only if the benefits justify the additional lab complexity. |
+| 6 — FinOps | Spend visibility and guardrails. | Activate cost-allocation tags, create a ₹1,500 monthly organization budget with alerts at 50%, 80%, and 100%, add a development-account budget, configure anomaly detection for EC2/RDS/S3, and document a monthly cost-review routine. Use `terraform/global/finops/`. |
+| 7 — Backups | Backup only resources that need it. | Create an AWS Backup plan and vault for resources tagged `Backup = required`, with daily backups and 30-day retention. Start with development resources and log storage where applicable. Use `terraform/global/backup-policies/`. |
+| 8 — Delivery quality | Repeatable, safe infrastructure changes. | Commit `.terraform.lock.hcl`, add `terraform fmt -check` and `terraform validate` to CI, run `terraform plan` on pull requests, require manual approval for applies, and add `tflint` when the configurations grow. |
 
----
+## IAM-User Rules for This Lab
 
-### Phase 3 — Networking
-**Status: Not started**
+- Do not use the AWS root user for normal work; enable root MFA and keep recovery details secure.
+- Use separate named IAM users per account, with MFA enabled.
+- Grant only the permissions needed for the exercise; use roles instead of duplicating broad permissions where practical.
+- Store access keys only in the local AWS credentials file or a secure secret manager—never in this repository, Terraform variables, shell history, or source code.
+- Prefer short-lived workflows such as AWS CloudShell or IAM roles when they fit the experiment, even though Identity Center is out of scope.
+- Rotate and delete unused access keys after each lab activity.
 
-All compute accounts need VPCs. The `idk-network` account owns shared networking resources.
+## Tagging Standard
 
-| Task | Status | Notes |
-|---|---|---|
-| CIDR plan document | Pending | Supernet: `10.0.0.0/8`, per-account allocations |
-| VPC in `idk-network` account | Pending | Public + private subnets, 2 AZs in `ap-south-1` |
-| Internet Gateway | Pending | |
-| NAT Gateway | Pending | Single AZ only — cost optimisation |
-| VPC Endpoints (S3, DynamoDB) | Pending | Avoids NAT Gateway charges for AWS API calls |
-| Route Tables | Pending | |
-| Security Groups baseline | Pending | |
-| NACLs | Pending | |
-| Route 53 private hosted zone | Pending | Internal DNS for `idk.internal` |
-| Terraform config | Pending | `terraform/accounts/network/vpc/` |
-| ADR-005: Networking design | Pending | Single VPC vs shared VPC vs Transit Gateway decision |
+All resources should include these tags. The existing organization tag policy standardizes their spelling and, for selected tags, permitted values.
 
----
+| Tag | Purpose |
+|---|---|
+| `Department`, `BusinessUnit`, `CostCenter` | Cost allocation and reporting |
+| `Project`, `Application`, `Environment`, `Owner` | Ownership and workload context |
+| `ManagedBy` | Identifies Terraform, console, or other management paths |
+| `DataClassification`, `Compliance`, `Criticality` | Security and operational context |
+| `Backup` | Drives planned backup selection |
 
-### Phase 4 — AI Lab
-**Status: Not started**
+## Remote State Keys
 
-The only account running compute in Phase 1. Ubuntu EC2 for AI/ML development with VS Code Remote SSH.
+All state is stored in `idk-tfstate-management-<account-id>` in `ap-south-1`.
 
-| Task | Status | Notes |
-|---|---|---|
-| VPC for `idk-ai-lab` | Pending | Standalone or shared from network account |
-| EC2 instance | Pending | Ubuntu 24.04, `t3.small`, 20GB `gp3` |
-| Security Group | Pending | SSH (your IP only), HTTPS |
-| Key pair | Pending | Ed25519 key for VS Code Remote SSH |
-| IAM instance role | Pending | Least privilege — S3 read for artefacts |
-| User data script | Pending | Docker, Docker Compose, Python, Git, Terraform, Ansible |
-| Application stack | Pending | FastAPI, LangGraph, LangChain, CrewAI, AutoGen, MCP, LiteLLM |
-| Data services | Pending | PostgreSQL, Redis, ChromaDB |
-| Observability | Pending | Prometheus, Grafana, Nginx |
-| Terraform config | Pending | `terraform/accounts/ai-lab/` |
-| ADR: instance type choice | Pending | Why `t3.small` — cost vs capability |
-
----
-
-### Phase 5 — Security Baseline
-**Status: Not started**
-
-Enable AWS-native security services across all accounts. Centralise findings in `idk-security`.
-
-| Task | Status | Notes |
-|---|---|---|
-| Enable GuardDuty org-wide | Pending | Delegated admin to `idk-security` |
-| Enable SecurityHub org-wide | Pending | Aggregated in `idk-security` |
-| Enable AWS Config org-wide | Pending | Config rules for tag compliance, encryption |
-| Organisation CloudTrail | Pending | All accounts → S3 in `idk-log-archive` |
-| S3 log archive bucket | Pending | In `idk-log-archive` account, immutable |
-| Config rules | Pending | Required tags, encryption at rest, no public S3 |
-| Terraform: security account | Pending | `terraform/accounts/security/` |
-| Terraform: log archive account | Pending | `terraform/accounts/log-archive/` |
-
----
-
-### Phase 6 — FinOps
-**Status: Not started**
-
-Cost visibility, allocation, budgets, and anomaly detection.
-
-| Task | Status | Notes |
-|---|---|---|
-| Activate Cost Allocation Tags | Pending | All 12 mandatory tags in management account |
-| Cost Explorer hourly granularity | Pending | Additional cost ~$0.01/hour but required for accurate FinOps |
-| Org-level budget alert | Pending | Alert at 80% of ₹1,500/month |
-| Per-sandbox budget alerts | Pending | `idk-ai-lab` and `idk-finops-lab` have highest risk |
-| Anomaly Detection monitors | Pending | Per service — EC2, RDS, S3 |
-| Cost and Usage Report (CUR) | Pending | S3 bucket in `idk-finops-lab` |
-| Savings Plans strategy doc | Pending | After 1 month of usage data |
-| Showback/chargeback design | Pending | Which cost center owns what |
-| Executive dashboard design | Pending | Cost by OU, account, and cost center |
-| Terraform config | Pending | `terraform/global/finops/` |
-
----
-
-### Phase 7 — Backup Policies
-**Status: Not started**
-
-Automate backups for resources tagged `Backup: required`.
-
-| Task | Status | Notes |
-|---|---|---|
-| AWS Backup plan | Pending | Daily backup, 30-day retention |
-| Backup vault | Pending | In `idk-log-archive` account |
-| Backup policy | Pending | Attach to Production and Security OUs |
-| Terraform config | Pending | `terraform/global/backup-policies/` |
-
----
-
-### Ongoing / Cross-Cutting
-**Status: Partial**
-
-| Task | Status | Notes |
-|---|---|---|
-| `.gitignore` | Done | Covers Terraform, AWS creds, Python, secrets |
-| `.terraform.lock.hcl` committed | Pending | Needs `terraform init` to generate first |
-| CI/CD pipeline | Pending | GitHub Actions: `terraform plan` on PR, `terraform apply` on merge |
-| Pre-commit hooks | Pending | `terraform fmt`, `terraform validate`, `tflint` |
-| Terraform module extraction | Pending | Once networking + compute patterns repeat — `modules/vpc`, `modules/ec2` |
-| ADR-004: SSO group design | Pending | |
-| ADR-005: Networking design | Pending | |
-
----
-
-## Architecture Decisions
-
-| ADR | Title | Status |
-|---|---|---|
-| [ADR-001](docs/decisions/ADR-001-no-control-tower.md) | No AWS Control Tower | Accepted |
-| [ADR-002](docs/decisions/ADR-002-iam-identity-center.md) | IAM Identity Center over IAM Users | Accepted |
-| [ADR-003](docs/decisions/ADR-003-single-region.md) | Single Primary Region (ap-south-1) for Phase 1 | Accepted — review at Phase 5 |
-| ADR-004 | SSO group and permission set design | Pending — Phase 2 |
-| ADR-005 | Networking design (VPC strategy) | Pending — Phase 3 |
-
----
-
-## Tagging Standards
-
-All resources must carry these 12 tags. The Tag Policy enforces key names and allowed values.
-
-| Tag | Allowed Values | FinOps Use |
-|---|---|---|
-| `Department` | Platform Engineering, AI & Data, Finance, HR, Sales, Marketing, Operations, Security, Customer Support, Research & Development | Cost by department |
-| `CostCenter` | CC1001–CC1010 | Chargeback |
-| `Project` | Free-form | Cost by project |
-| `Application` | Free-form | Cost by application |
-| `Environment` | production, uat, development, sandbox, management | Cost by environment |
-| `Owner` | Free-form (team or email) | Accountability |
-| `BusinessUnit` | Technology, Finance, Sales, Operations, HR | Executive rollup |
-| `ManagedBy` | terraform, ansible, cloudformation, console, bootstrap-script, github-actions | Drift detection |
-| `DataClassification` | public, internal, confidential, restricted | Security controls |
-| `Compliance` | none, pci-dss, hipaa, sox, gdpr, iso27001 | Audit |
-| `Backup` | required, not-required | Backup automation |
-| `Criticality` | critical, high, medium, low | Incident response priority |
-
----
-
-## Remote State Locations
-
-All Terraform state is stored in `idk-tfstate-management-<account-id>` (ap-south-1).
-
-| Layer | State Key |
+| Layer | State key |
 |---|---|
 | Organization | `global/organization/terraform.tfstate` |
 | SCPs | `global/scps/terraform.tfstate` |
-| Tag Policies | `global/tag-policies/terraform.tfstate` |
-| Identity Center | `global/identity-center/terraform.tfstate` *(Phase 2)* |
-| FinOps | `global/finops/terraform.tfstate` *(Phase 6)* |
-| Backup Policies | `global/backup-policies/terraform.tfstate` *(Phase 7)* |
-| Network | `accounts/network/vpc/terraform.tfstate` *(Phase 3)* |
-| AI Lab | `accounts/ai-lab/terraform.tfstate` *(Phase 4)* |
-| Security | `accounts/security/terraform.tfstate` *(Phase 5)* |
-| Log Archive | `accounts/log-archive/terraform.tfstate` *(Phase 5)* |
+| Tag policies | `global/tag-policies/terraform.tfstate` |
+| Lab IAM access (planned) | `global/iam-access/terraform.tfstate` |
+| Development network (planned) | `accounts/development/network/terraform.tfstate` |
+| AI lab workload (planned) | `accounts/development/ai-lab/terraform.tfstate` |
+| Log archive/security (planned) | `accounts/log-archive/security/terraform.tfstate` |
+| FinOps (planned) | `global/finops/terraform.tfstate` |
+| Backup policies (planned) | `global/backup-policies/terraform.tfstate` |
 
----
+## Architecture Decisions
 
-## Quick Reference — Run Order
+| ADR | Decision | Status |
+|---|---|---|
+| [ADR-001](docs/decisions/ADR-001-no-control-tower.md) | Do not use AWS Control Tower. | Accepted |
+| [ADR-002](docs/decisions/ADR-002-iam-identity-center.md) | Use IAM users for this lab; defer IAM Identity Center. | Revised |
+| [ADR-003](docs/decisions/ADR-003-single-region.md) | Use `ap-south-1` as the primary region. | Accepted |
+| ADR-004 (planned) | Low-cost development-network design. | Planned |
+| ADR-005 (planned) | IAM-user and cross-account role operating model. | Planned |
 
+## Repository Layout
+
+```text
+docs/
+  decisions/                 Architecture Decision Records
+  lessons_learned.md         Issues and recovery guidance from Phase 1
+scripts/bootstrap/           One-time S3 state and Organization bootstrap
+terraform/global/
+  organization/              OUs and member accounts
+  scps/                      Service Control Policies
+  tag-policies/              Organization tag policy
+  iam-access/                Planned lab IAM access configuration
+  finops/                    Planned budgets and cost controls
+  backup-policies/           Planned AWS Backup policies
+terraform/accounts/
+  development/network/       Planned VPC and baseline networking
+  development/ai-lab/        Planned AI workload
+  log-archive/security/      Planned centralized logging and security
 ```
-Phase 0:  scripts/bootstrap/bootstrap.py --account-id <your-account-id>
 
-Phase 1:  terraform/global/organization/   → terraform init && plan && apply
-          terraform/global/scps/           → terraform init && plan && apply
-          terraform/global/tag-policies/   → terraform init && plan && apply
+## Safety Notes
 
-Phase 2:  terraform/global/identity-center/
-
-Phase 3:  terraform/accounts/network/vpc/
-
-Phase 4:  terraform/accounts/ai-lab/
-
-Phase 5:  terraform/accounts/log-archive/
-          terraform/accounts/security/
-
-Phase 6:  terraform/global/finops/
-
-Phase 7:  terraform/global/backup-policies/
-```
-
-Each layer must be applied in order — later layers read outputs from earlier layers via remote state.
+- Never apply an account replacement or destruction plan. AWS account closure is slow and difficult to reverse.
+- Run `terraform plan` before every apply and investigate any unexpected `-/+` output.
+- Terraform state can contain sensitive values. Keep it in the encrypted S3 backend and keep local state/plan files out of Git.
+- See [lessons learned](docs/lessons_learned.md) for known AWS Organizations and Terraform pitfalls.

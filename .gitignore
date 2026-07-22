@@ -6,8 +6,9 @@
 # Local .terraform directories contain provider binaries (100MB+) and
 # cached modules. Never commit these.
 **/.terraform/
-# NOTE: .terraform.lock.hcl is intentionally NOT ignored — it must be committed
-# to ensure reproducible provider versions across all environments and CI/CD.
+# Commit .terraform.lock.hcl to pin provider versions and checksums.
+backend.hcl
+terraform.exe
 
 # Terraform state files — contain sensitive resource data
 # State lives in S3 (remote backend), never in Git

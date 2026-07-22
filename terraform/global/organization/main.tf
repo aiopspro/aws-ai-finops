@@ -151,30 +151,6 @@ resource "aws_organizations_account" "log_archive" {
   }
 }
 
-# ── Shared Services Account ───────────────────────────────────────────────────
-# LAB PURPOSE: IAM Identity Center (SSO) home account.
-#   Practice: Configure permission sets, assign users to accounts,
-#   set up federated access — eliminates need for IAM users in each account.
-# ENTERPRISE INSIGHT: SSO via Identity Center is the enterprise standard.
-#   No one should be logging in with long-lived IAM user keys in production.
-resource "aws_organizations_account" "shared_services" {
-  name                       = "idk-shared-svc"
-  email                      = "idkwealthclub+idk-shared-services@gmail.com"
-  iam_user_access_to_billing = "ALLOW"
-  parent_id                  = aws_organizations_organizational_unit.shared_services.id
-
-  tags = {
-    AccountPurpose     = "IAM Identity Center and shared platform tooling"
-    DataClassification = "internal"
-    Compliance         = "none"
-    Backup             = "not-required"
-    Criticality        = "high"
-  }
-
-  lifecycle {
-    ignore_changes = [email]
-  }
-}
 
 # ── Development Account ───────────────────────────────────────────────────────
 # LAB PURPOSE: Primary hands-on AI + FinOps lab account.
